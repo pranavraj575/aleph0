@@ -1,6 +1,6 @@
 import torch
 
-from alephzero.game import SubsetGame
+from aleph0.game import SubsetGame
 
 
 class Algorithm:

@@ -1,6 +1,6 @@
 import torch
 
-from alephzero.game.game import PickGame
+from aleph0.game.game import PickGame
 
 
 class Toe(PickGame):

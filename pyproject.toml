@@ -19,7 +19,7 @@ dependencies = [
 #gui = ["pygame"]
 
 [project.urls]
-Homepage = "https://github.com/pranavraj575/alephzero"
+Homepage = "https://github.com/pranavraj575/aleph0"
 
 #[tool.coverage.run]
 #omit = [

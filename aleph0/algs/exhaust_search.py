@@ -1,7 +1,7 @@
 import torch
 
-from alephzero.game import SubsetGame
-from alephzero.algs.algorithm import Algorithm
+from aleph0.game import SubsetGame
+from aleph0.algs.algorithm import Algorithm
 
 
 class Exhasutive(Algorithm):
@@ -82,7 +82,7 @@ class Exhasutive(Algorithm):
 
 
 if __name__ == '__main__':
-    from alephzero.examples.tictactoe import Toe
+    from aleph0.examples.tictactoe import Toe
 
     # if run on initial game, takes a while, then returns that every move is a tying move
     # distribution is uniform over all moves, and value is (.5,.5)
