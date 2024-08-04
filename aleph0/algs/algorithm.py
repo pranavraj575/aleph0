@@ -16,5 +16,6 @@ class Algorithm:
             array of size N that determines the calculated probability of taking each move,
                 in order of moves given, or game.get_all_valid_moves()
             array of size K in game that determines each players expected payout
+                or None if not calculated
         """
         raise NotImplementedError

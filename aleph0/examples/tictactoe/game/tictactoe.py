@@ -32,7 +32,7 @@ class Toe(PickGame):
     def representation(self):
         I = torch.cat((torch.arange(3).view((3, 1, 1)), torch.zeros((3, 1, 1))), dim=-1)
         J = torch.cat((torch.zeros((1, 3, 1)), torch.arange(3).view((1, 3, 1))), dim=-1)
-        return self.board.clone(), (I + J), torch.tensor([self.player])
+        return self.board.clone(), (I + J), torch.tensor([self.current_player])
 
     @staticmethod
     def from_representation(representation):

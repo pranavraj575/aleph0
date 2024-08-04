@@ -56,7 +56,7 @@ class SubsetGame:
         """
         raise NotImplementedError
 
-    def possible_special_moves(self):
+    def valid_special_moves(self):
         """
         returns iterable of special moves possible from current position
         MUST BE DETERMINISTIC, always return moves in same order
@@ -140,7 +140,7 @@ class SubsetGame:
         """
         gets view of game from another player
             can involve flipping board dimensions (i.e. in chess)
-        must be true that self.get_view(player2).get_view(self.player) is equivalent to self
+        must be true that self.get_view(player2).get_view(self.current_player) is equivalent to self
         note that this does not affect the player whose turn it is or anything
             this can be thought of as looking at the board from someone else's angle
 
@@ -185,7 +185,7 @@ class SubsetGame:
             iterable of (self.subset_size tuples of N tuples)
         """
         if check_special:
-            for move in self.possible_special_moves():
+            for move in self.valid_special_moves():
                 yield move
 
         if len(move_prefix) == self.subset_size:
@@ -222,6 +222,9 @@ class SubsetGame:
         """
         raise NotImplementedError
 
+    def render(self):
+        print(self.__str__())
+
 
 class PickGame(SubsetGame):
     """
@@ -229,8 +232,8 @@ class PickGame(SubsetGame):
     select a square at each turn (tic tac toe style)
     """
 
-    def __init__(self, current_player,special_moves):
-        super().__init__(current_player=current_player,subset_size=1, special_moves=special_moves)
+    def __init__(self, current_player, special_moves):
+        super().__init__(current_player=current_player, subset_size=1, special_moves=special_moves)
 
 
 class PickPlaceGame(SubsetGame):
@@ -239,5 +242,5 @@ class PickPlaceGame(SubsetGame):
     select a piece to move, and a place to move it
     """
 
-    def __init__(self,current_player, special_moves):
-        super().__init__(current_player=current_player,subset_size=2, special_moves=special_moves)
+    def __init__(self, current_player, special_moves):
+        super().__init__(current_player=current_player, subset_size=2, special_moves=special_moves)

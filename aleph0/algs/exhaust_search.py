@@ -94,9 +94,9 @@ if __name__ == '__main__':
 
     # this is a losing move for player 1.
     # if run on this game, algorithm quickly terminates to return the one winning move for player 0
-    # game = game.make_move(((2, 2),))
+    game = game.make_move(((2, 2),))
 
-    print(game.board)
+    print(game)
     ex = Exhasutive()
     print(list(game.get_all_valid_moves()))
     print(ex.get_policy_value(game))
