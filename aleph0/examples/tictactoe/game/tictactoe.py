@@ -61,11 +61,20 @@ class Toe(PickGame):
                 return ret
         return (.5, .5)
 
+    def __str__(self):
+        return '---\n'+str(self.board.numpy()).replace(' ', ''
+                                               ).replace('[', ''
+                                                         ).replace(']', ''
+                                                                   ).replace('-1.', ' '
+                                                                             ).replace('0.', 'X'
+                                                                                       ).replace('1.', 'O'
+                                                                                                 )+'\n---'
+
 
 if __name__ == '__main__':
     toe = Toe()
     while True:
         toe = toe.make_move(move=next(toe.get_all_valid_moves()))
-        print(toe.board)
+        print(toe)
         if toe.is_terminal(): break
     print(toe.get_result())
