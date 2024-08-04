@@ -1,0 +1,28 @@
+[project]
+name = "aleph0"
+version = "0.0.0"
+authors = [
+  { name="Pranav", email="pranavraj575@gmail.com" },
+]
+description = "alphazero implemented for games with state/action spaces a finite subset of a countable space"
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+        'torch',
+]
+#[project.optional-dependencies]
+#gui = ["pygame"]
+
+[project.urls]
+Homepage = "https://github.com/pranavraj575/alephzero"
+
+#[tool.coverage.run]
+#omit = [
+#    "unstable_baselines3_tests/*",
+#    "unstable_baselines3_tests",
+#    ]
