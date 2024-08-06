@@ -1,28 +1,45 @@
 import torch
 
-from aleph0.game.game import PickGame
+from aleph0.game.game import FixedSizeSubsetGame
 
 
-class Toe(PickGame):
-    EMPTY = -1
+class Toe(FixedSizeSubsetGame):
+    EMPTY = 2
     P0 = 0
     P1 = 1
 
     def __init__(self, current_player=P0, board=None):
-        super().__init__(current_player=current_player, special_moves=[])
+        super().__init__(current_player=current_player,
+                         subset_size=1,
+                         special_moves=[],
+                         )
         if board is None:
-            board = self.EMPTY*torch.ones((3, 3))
+            board = self.EMPTY*torch.ones((3, 3), dtype=torch.long)
         self.board = board
 
     def get_valid_next_selections(self, move_prefix=()):
         for (i, j) in zip(*torch.where(torch.eq(self.board, self.EMPTY))):
             yield i.item(), j.item()
 
-    def get_board_shape(self):
+    @staticmethod
+    def fixed_obs_board_shape():
         return (3, 3)
 
-    def get_piece_shape(self):
-        return ()
+    @property
+    def observation_shape(self):
+        return (3, 3), (3, 3, 2), 1
+
+    @staticmethod
+    def num_pieces():
+        return 3
+
+    @staticmethod
+    def possible_move_cnt():
+        return 9
+
+    @staticmethod
+    def index_to_move(idx):
+        return ((idx//3, idx%3),)
 
     @staticmethod
     def invert_player(player):
@@ -62,13 +79,13 @@ class Toe(PickGame):
         return (.5, .5)
 
     def __str__(self):
-        return '---\n'+str(self.board.numpy()).replace(' ', ''
-                                               ).replace('[', ''
-                                                         ).replace(']', ''
-                                                                   ).replace('-1.', ' '
-                                                                             ).replace('0.', 'X'
-                                                                                       ).replace('1.', 'O'
-                                                                                                 )+'\n---'
+        return '---\n' + str(self.board.numpy()).replace(' ', ''
+                                                         ).replace('[', ''
+                                                                   ).replace(']', ''
+                                                                             ).replace('-1.', ' '
+                                                                                       ).replace('0.', 'X'
+                                                                                                 ).replace('1.', 'O'
+                                                                                                           ) + '\n---'
 
 
 if __name__ == '__main__':

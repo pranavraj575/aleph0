@@ -4,12 +4,12 @@ class SubsetGame:
     each player makes a move by selecting a subset of the board positions of fixed size
         the motivation of this is a 'pick-place' game where the subset size is 2, such as chess or jenga
     this should be IMMUTABLE, all subclass methods like (make move, etc.) should return a copy of self with no shared info
-    each state is associated with
+    each observation is associated with
         a shape (D1,...,DN, *) board
         a shape (D1,...,DN, N) 'position' board that keeps track of each index's coordinates in each of the N dimensions
         a T dimensional vector with additional game information
-    T and N are fixed, while Di can change (sequential data
-    all information required to play the game optimally should be encoded in this vector
+    T and N are fixed, while Di can change (sequential data)
+
     Note that the game need not be deterministic, the only requirement is that the winning strategy is only dependent
         on the current state, as opposed to past values
     for example,
@@ -63,24 +63,38 @@ class SubsetGame:
         else:
             raise NotImplementedError
 
-    def get_board_shape(self):
+    @property
+    def observation_shape(self):
         """
-        Returns: (D1,...,DN) for current board
-        """
-        raise NotImplementedError
-
-    def get_piece_shape(self):
-        """
-        Returns: (*)
+        observation is shapes (D1,...,DN, *), (D1,...,DN, N), T)
+        this method returns those shapes
         """
         raise NotImplementedError
 
     @property
-    def representation(self):
+    def observation(self):
         """
-        Returns: (board, position, info vector)
+        Returns: (board, position, info vector), as observed by the current player
             of shapes (D1,...,DN, *), (D1,...,DN, N), (T,))
         should return clones of any internal variables
+
+        This can involve flipping the board and such, if necessary
+        """
+        return self.representation
+
+    @property
+    def batch_obs(self):
+        board, indices, vec = self.observation
+        return board.unsqueeze(0), indices.unsqueeze(0), vec.unsqueeze(0)
+
+    @property
+    def representation(self):
+        """
+        Returns: representation of self, likely a tuple of tensors
+            often this is the same as self.observation, (i.e. for perfect info games)
+        all information required to play the game must be obtainable from representation
+        i.e. creating another SubsetGame by calling from_representation on the representation must return a
+            Subset game that (with a set random seed) is functionally identical to the original
         """
         raise NotImplementedError
 
@@ -132,22 +146,35 @@ class SubsetGame:
     # NOT REQUIRED TO IMPLEMENT (either extra, or current implementation works fine)        #
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
-    def get_view(self, player):
+    def get_obs_board_shape(self):
         """
-        gets view of game from another player
-            can involve flipping board dimensions (i.e. in chess)
-        must be true that self.get_view(player2).get_view(self.current_player) is equivalent to self
-        note that this does not affect the player whose turn it is or anything
-            this can be thought of as looking at the board from someone else's angle
-        this is useful for games like chess, where orientation matters, and it is useful to always learn optimal moves
-            when the board is oriented to face the player whose move it is
-        by default, this returns self
-        Args:
-            player: player index (<K)
-        Returns:
-            a SubsetGame object clone
+        Returns: (D1,...,DN) for current board
         """
-        return self
+        _, pos_shape, _ = self.observation_shape
+        return pos_shape[:-1]
+
+    @staticmethod
+    def get_obs_vector_shape(self):
+        """
+        returns T for the length of the observation extra vector
+        """
+        _, _, T = self.observation_shape
+        return T
+
+    def get_obs_piece_shape(self):
+        """
+        Returns: (*), the encoding shape of the piece
+            for board games, this is often empty (), as each piece is represented by a zero-length integer
+        """
+        obs_shape, pos_shape, _ = self.observation_shape
+        return tuple(obs_shape)[len(pos_shape) - 1:]
+
+    @staticmethod
+    def num_pieces():
+        """
+        returns number of possible distinct pieces, if finite
+        """
+        raise NotImplementedError
 
     def clone(self):
         return self.from_representation(self.representation)
@@ -220,21 +247,24 @@ class SubsetGame:
         print(self.__str__())
 
 
-class PickGame(SubsetGame):
-    """
-    cmmmon board game setup
-    select a square at each turn (tic tac toe style)
-    """
+class FixedSizeSubsetGame(SubsetGame):
+    def __init__(self, current_player, subset_size, special_moves):
+        super().__init__(current_player, subset_size, special_moves)
 
-    def __init__(self, current_player, special_moves):
-        super().__init__(current_player=current_player, subset_size=1, special_moves=special_moves)
+    @staticmethod
+    def fixed_obs_board_shape():
+        raise NotImplementedError
 
+    @staticmethod
+    def possible_move_cnt():
+        """
+        return number of possible moves
+        """
+        raise NotImplementedError
 
-class PickPlaceGame(SubsetGame):
-    """
-    cmmmon board game setup
-    select a piece to move, and a place to move it
-    """
-
-    def __init__(self, current_player, special_moves):
-        super().__init__(current_player=current_player, subset_size=2, special_moves=special_moves)
+    @staticmethod
+    def index_to_move(idx):
+        """
+        covert idx into a valid move
+        """
+        raise NotImplementedError
