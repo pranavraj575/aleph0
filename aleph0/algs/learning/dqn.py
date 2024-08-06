@@ -90,7 +90,8 @@ class DQNAlg(Algorithm):
 
         batch_obs = tuple(torch.cat([item for _ in moves], dim=0) for item in batch_obs)
         values = self.dqn.forward(obs=batch_obs, action=torch.tensor([self.move_to_idx[move] for move in moves]))
-        return values.flatten()
+        values = values.flatten().detach()
+        return torch.softmax(values, dim=-1), values
 
 
 if __name__ == '__main__':
