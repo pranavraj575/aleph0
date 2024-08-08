@@ -1,9 +1,12 @@
-import torch
+import os, pickle
 
 from aleph0.game import SubsetGame
 
 
 class Algorithm:
+    def __init__(self):
+        self.info = dict()
+
     def get_policy_value(self, game: SubsetGame, moves=None):
         """
         gets the distribution of best moves from the state of game, as well as the value for each player
@@ -19,3 +22,26 @@ class Algorithm:
                 or None if not calculated
         """
         raise NotImplementedError
+
+    def save(self, save_dir):
+        """
+        save to specified dir
+        Args:
+            save_dir: save dir
+        """
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+        f = open(os.path.join(save_dir, 'info.pkl'), 'wb')
+        pickle.dump(self.info, f)
+        f.close()
+
+    def load(self, save_dir):
+        """
+        loads from specified dir
+        Args:
+            save_dir: save dir
+        """
+
+        f = open(os.path.join(save_dir, 'info.pkl'), 'rb')
+        self.info.update(pickle.load(f))
+        f.close()

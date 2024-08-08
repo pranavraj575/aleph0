@@ -27,7 +27,12 @@ class SubsetGame:
     """
     COMPRESSABLE = False
 
-    def __init__(self, current_player, subset_size, special_moves):
+    def __init__(self,
+                 num_players,
+                 current_player,
+                 subset_size,
+                 special_moves,
+                 ):
         """
         Args:
             current_player: player whose move it is
@@ -39,6 +44,7 @@ class SubsetGame:
         self.current_player = current_player
         self.subset_size = subset_size
         self.special_moves = special_moves
+        self.num_players = num_players
 
     def get_valid_next_selections(self, move_prefix=()):
         """
@@ -64,14 +70,6 @@ class SubsetGame:
             raise NotImplementedError
 
     @property
-    def observation_shape(self):
-        """
-        observation is shapes (D1,...,DN, *), (D1,...,DN, N), T)
-        this method returns those shapes
-        """
-        raise NotImplementedError
-
-    @property
     def observation(self):
         """
         Returns: (board, position, info vector), as observed by the current player
@@ -80,12 +78,7 @@ class SubsetGame:
 
         This can involve flipping the board and such, if necessary
         """
-        return self.representation
-
-    @property
-    def batch_obs(self):
-        board, indices, vec = self.observation
-        return board.unsqueeze(0), indices.unsqueeze(0), vec.unsqueeze(0)
+        raise NotImplementedError
 
     @property
     def representation(self):
@@ -93,8 +86,7 @@ class SubsetGame:
         Returns: representation of self, likely a tuple of tensors
             often this is the same as self.observation, (i.e. for perfect info games)
         all information required to play the game must be obtainable from representation
-        i.e. creating another SubsetGame by calling from_representation on the representation must return a
-            Subset game that (with a set random seed) is functionally identical to the original
+        i.e. self.from_represnetation(self.represnetation) must be functionally equivalent to self
         """
         raise NotImplementedError
 
@@ -145,6 +137,32 @@ class SubsetGame:
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
     # NOT REQUIRED TO IMPLEMENT (either extra, or current implementation works fine)        #
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+    @property
+    def batch_obs(self):
+        board, indices, vec = self.observation
+        return board.unsqueeze(0), indices.unsqueeze(0), vec.unsqueeze(0)
+
+    @property
+    def permutation_to_standard_pos(self):
+        """
+        return the permutation required to send values to 'normal' values
+        this encodes where each player was sent
+        i.e. if we look at the game from player i's perspective,
+            permutation_to_standard_pos[i]=0
+
+        if we are playing black in chess, an observation may flip the board, and the network would
+            view the game as good for white
+            in this case, we would want the permutation to be [1,0] so true_value[i]=output_value[perm[i]]
+        """
+        return list(range(self.num_players))
+
+    @property
+    def observation_shape(self):
+        """
+        observation is shapes (D1,...,DN, *), (D1,...,DN, N), T)
+        this method returns those shapes
+        """
+        return tuple(obs.shape for obs in self.observation)
 
     def get_obs_board_shape(self):
         """
@@ -161,41 +179,23 @@ class SubsetGame:
         _, _, T = self.observation_shape
         return T
 
-    def get_obs_piece_shape(self):
+    def get_underlying_set_shape(self):
         """
-        Returns: (*), the encoding shape of the piece
+        Returns: (*), the encoding shape of the underlying set
             for board games, this is often empty (), as each piece is represented by a zero-length integer
         """
         obs_shape, pos_shape, _ = self.observation_shape
         return tuple(obs_shape)[len(pos_shape) - 1:]
 
     @staticmethod
-    def num_pieces():
+    def underlying_set_size():
         """
-        returns number of possible distinct pieces, if finite
+        returns number of possible distinct elements of underlying set, if finite
         """
-        raise NotImplementedError
+        return None
 
     def clone(self):
         return self.from_representation(self.representation)
-
-    @property
-    def compressed_rep(self):
-        """
-        gets compressed represenation of game (if possible to save space)
-        Returns: compressed represntation object
-        """
-        raise NotImplementedError
-
-    @staticmethod
-    def from_compressed_rep(compressed_rep):
-        """
-        returns a SubsetGame instance from the output of self.compressed_rep
-        Args:
-            representation: output of self.compressed_rep
-        Returns: SubsetGame object
-        """
-        raise NotImplementedError
 
     def get_all_valid_moves(self, move_prefix=(), check_special=True):
         """
@@ -248,11 +248,15 @@ class SubsetGame:
 
 
 class FixedSizeSubsetGame(SubsetGame):
-    def __init__(self, current_player, subset_size, special_moves):
-        super().__init__(current_player, subset_size, special_moves)
+    def __init__(self, num_players, current_player, subset_size, special_moves):
+        super().__init__(num_players=num_players,
+                         current_player=current_player,
+                         subset_size=subset_size,
+                         special_moves=special_moves,
+                         )
 
     @staticmethod
-    def fixed_obs_board_shape():
+    def fixed_obs_shape():
         raise NotImplementedError
 
     @staticmethod
@@ -265,6 +269,23 @@ class FixedSizeSubsetGame(SubsetGame):
     @staticmethod
     def index_to_move(idx):
         """
-        covert idx into a valid move
+        convert idx into a valid move
         """
         raise NotImplementedError
+
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+    # NOT REQUIRED TO IMPLEMENT (either extra, or current implementation works fine)        #
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+    def move_to_idx(self, move):
+        for i in range(self.possible_move_cnt()):
+            if self.index_to_move(i) == move:
+                return i
+        return None
+
+    @property
+    def observation_shape(self):
+        """
+        observation is shapes (D1,...,DN, *), (D1,...,DN, N), T)
+        this method returns those shapes
+        """
+        return self.fixed_obs_shape()
