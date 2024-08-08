@@ -284,9 +284,15 @@ if __name__ == '__main__':
         alg.load('test')
         print('loaded value')
         print(torch.round(alg.get_q_values(game=game), decimals=2))
-
     for i in range(500):
         alg.train_episode(game=Toe(), epsilon=.1)
         print(i, end='         \r')
     alg.save('test')
     print(torch.round(alg.get_q_values(game=game), decimals=2))
+
+    from aleph0.algs import Human, play_game
+
+    outcome,_=play_game(game=Toe(), alg_list=[Human(), alg])
+    print(outcome[0])
+    if outcome[0][1]:
+        print('you suck at this')
