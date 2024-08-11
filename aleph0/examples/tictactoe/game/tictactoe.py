@@ -25,11 +25,11 @@ class Toe(FixedSizeSubsetGame):
 
     @staticmethod
     def fixed_obs_shape():
-        return (3, 3), (3, 3, 2), (1,)
+        return ((3, 3),), (3, 3, 2), (1,)
 
     @staticmethod
-    def underlying_set_size():
-        return 3
+    def underlying_set_sizes():
+        return (3,)
 
     @staticmethod
     def possible_move_cnt():
@@ -62,23 +62,23 @@ class Toe(FixedSizeSubsetGame):
     @property
     def observation(self):
         if self.current_player == self.P0:
-            return self.representation
+            B, P, T = self.representation
         else:
             B, P, T = self.representation
             p0s = torch.where(torch.eq(B, self.P0))
             p1s = torch.where(torch.eq(B, self.P1))
             B[p0s] = self.P1
             B[p1s] = self.P0
-            return B, P, T
+        return (B,), P, T
 
     @staticmethod
     def from_representation(representation):
         board, _, vec = representation
         return Toe(board=board, current_player=vec.item())
 
-    def make_move(self, move):
+    def make_move(self, local_move):
         board = self.board.clone()
-        board[move[0]] = self.current_player
+        board[local_move[0]] = self.current_player
         return Toe(current_player=self.invert_player(self.current_player), board=board)
 
     def is_terminal(self):
@@ -113,7 +113,8 @@ class Toe(FixedSizeSubsetGame):
 if __name__ == '__main__':
     toe = Toe()
     while True:
-        toe = toe.make_move(move=next(toe.get_all_valid_moves()))
+        toe = toe.make_move(local_move=next(toe.get_all_valid_moves()))
         print(toe)
+
         if toe.is_terminal(): break
     print(toe.get_result())

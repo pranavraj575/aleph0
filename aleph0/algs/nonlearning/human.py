@@ -16,6 +16,7 @@ class Human(Algorithm):
         selected = None
         while True:
             game.render()
+            print('current player', game.current_player)
             next_choices = [choice
                             for choice in game.get_valid_next_selections(move_prefix=move_prefix)
                             if move_prefix + (choice,) in [mv[:len(move_prefix) + 1] for mv in moves]
@@ -42,9 +43,14 @@ class Human(Algorithm):
                             move_prefix += (move_choice,)
                             if move_prefix in moves:
                                 selected = move_prefix
+            else:
+                # backspace
+                if len(move_prefix) > 0:
+                    move_prefix = move_prefix[:-1]
             if selected is not None:
                 next_game = game.make_move(selected)
-                print('next state:', next_game)
+                print('next state:')
+                next_game.render()
                 print('move made:', selected)
                 if input('redo? [y/n]: ').lower() == 'y':
                     move_prefix = ()

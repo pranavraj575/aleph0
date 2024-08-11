@@ -5,7 +5,11 @@ class SubsetGame:
         the motivation of this is a 'pick-place' game where the subset size is 2, such as chess or jenga
     this should be IMMUTABLE, all subclass methods like (make move, etc.) should return a copy of self with no shared info
     each observation is associated with
-        a shape (D1,...,DN, *) board
+        a tuple of shape (D1,...,DN, *) boards (the * can be different for each board)
+            i.e. ((D1,...,DN, *1),(D1,...,DN, *2),...)
+            the * represents the shape of the underlying set
+                we assume the underlying set is the product of a finite number of underlying sets. this makes
+                    it easier to represent some games with potentially mixed input
         a shape (D1,...,DN, N) 'position' board that keeps track of each index's coordinates in each of the N dimensions
         a T dimensional vector with additional game information
     T and N are fixed, while Di can change (sequential data)
@@ -14,13 +18,15 @@ class SubsetGame:
         on the current state, as opposed to past values
     for example,
     chess would be represented with
-        a shape (8,8) board, where each square contains an integer encoding the identity of the piece
+        one shape (8,8) board, where each square contains an integer encoding the identity of the piece
             the integer must also encode relevant information like an unmoved king/rook (for castling), etc
         a shape (8,8,2) position board P where entry P[i,j] simply contains the vector (i,j)
         a T dimensional vector with information such as the current player, the time since last captured piece, etc.
     jenga would be represented with
-        a shape (H,3,3,E) board, H is the tower height+1, E contains information about the piece,
+        one shape (H,3,3,E) board and one shape (H,3,3) board,
+            H is the tower height+1, E contains information about the piece,
             such as cartesian position, rotation
+            the other board would have binary pieces represneting whether there is a piece in each square
         a shape (H,3,3,3) position board P where entry P[h,i,j] contains [h,i-1,j-1]
             (if we want the 'center' piece to be 0)
         a T dimensional vector with information such as the current player
@@ -73,10 +79,26 @@ class SubsetGame:
     def observation(self):
         """
         Returns: (board, position, info vector), as observed by the current player
-            of shapes (D1,...,DN, *), (D1,...,DN, N), (T,))
+            of shapes ((D1,...,DN, *1),(D1,...,DN, *2),...), (D1,...,DN, N), (T,))
         should return clones of any internal variables
 
         This can involve flipping the board and such, if necessary
+        note that indices may also need to be flipped
+            i.e. the opponent's 0 may be different
+        """
+        raise NotImplementedError
+
+    @staticmethod
+    def num_observation_boards():
+        """
+        Returns: number of boards in (D1,...,DN, *1),(D1,...,DN, *2),...)
+        """
+        raise NotImplementedError
+
+    @staticmethod
+    def underlying_set_sizes():
+        """
+        returns number of possible distinct elements of each underlying set, if finite
         """
         raise NotImplementedError
 
@@ -87,6 +109,8 @@ class SubsetGame:
             often this is the same as self.observation, (i.e. for perfect info games)
         all information required to play the game must be obtainable from representation
         i.e. self.from_represnetation(self.represnetation) must be functionally equivalent to self
+
+        should return clones of any internal variables
         """
         raise NotImplementedError
 
@@ -100,14 +124,13 @@ class SubsetGame:
         """
         raise NotImplementedError
 
-    def make_move(self, move):
+    def make_move(self, local_move):
         """
         gets resulting SubsetGame object of taking specified move from this state
         this may not be deterministic,
         cannot be called on terminal states
         Args:
-            move: a subset of the possible board indices, a tuple of N-tuples
-            or END_TURN token for ending turn
+            local_move: a subset of the possible obs board indices, a tuple of N-tuples
         Returns:
             copy of SubsetGame that represents the result of taking the move
         """
@@ -137,10 +160,11 @@ class SubsetGame:
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
     # NOT REQUIRED TO IMPLEMENT (either extra, or current implementation works fine)        #
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
     @property
     def batch_obs(self):
-        board, indices, vec = self.observation
-        return board.unsqueeze(0), indices.unsqueeze(0), vec.unsqueeze(0)
+        boards, indices, vec = self.observation
+        return tuple(board.unsqueeze(0) for board in boards), indices.unsqueeze(0), vec.unsqueeze(0)
 
     @property
     def permutation_to_standard_pos(self):
@@ -159,10 +183,11 @@ class SubsetGame:
     @property
     def observation_shape(self):
         """
-        observation is shapes (D1,...,DN, *), (D1,...,DN, N), T)
+        observation is shapes ((D1,...,DN, *1),(D1,...,DN, *2),...), (D1,...,DN, N), T)
         this method returns those shapes
         """
-        return tuple(obs.shape for obs in self.observation)
+        boards, pos, vec = self.observation
+        return tuple(b.shape for b in boards), pos.shape, vec.shape
 
     def get_obs_board_shape(self):
         """
@@ -179,20 +204,14 @@ class SubsetGame:
         _, _, T = self.observation_shape
         return T
 
-    def get_underlying_set_shape(self):
+    def get_underlying_set_shapes(self):
         """
-        Returns: (*), the encoding shape of the underlying set
+        Returns: (*1,*2,...), the encoding shape of the underlying sets
             for board games, this is often empty (), as each piece is represented by a zero-length integer
+        we represnet the underlying set as a product of finite underlying sets to make it easier to mix input modes
         """
-        obs_shape, pos_shape, _ = self.observation_shape
-        return tuple(obs_shape)[len(pos_shape) - 1:]
-
-    @staticmethod
-    def underlying_set_size():
-        """
-        returns number of possible distinct elements of underlying set, if finite
-        """
-        return None
+        obs_shapes, pos_shape, _ = self.observation_shape
+        return tuple(tuple(obs_shape)[len(pos_shape) - 1:] for obs_shape in obs_shapes)
 
     def clone(self):
         return self.from_representation(self.representation)
@@ -255,6 +274,107 @@ class FixedSizeSubsetGame(SubsetGame):
                          special_moves=special_moves,
                          )
 
+    def get_valid_next_selections(self, move_prefix=()):
+        """
+        gets valid choices for next index to select
+            MUST BE DETERMINISTIC
+            moves must always be returned in the same order
+        Args:
+            move_prefix: indices selected so far, must be less than self.subsetsize
+        Returns:
+            iterable of N tuples indicating which additions are valid
+        """
+        raise NotImplementedError
+
+    def valid_special_moves(self):
+        """
+        returns iterable of special moves possible from current position
+        MUST BE DETERMINISTIC, always return moves in same order
+        Returns: boolean
+        """
+        return super().valid_special_moves()
+
+    @property
+    def observation(self):
+        """
+        Returns: (board, position, info vector), as observed by the current player
+            of shapes ((D1,...,DN, *1),(D1,...,DN, *2),...), (D1,...,DN, N), (T,))
+        should return clones of any internal variables
+
+        This can involve flipping the board and such, if necessary
+        """
+        raise NotImplementedError
+
+    @staticmethod
+    def num_observation_boards():
+        """
+        Returns: number of boards in (D1,...,DN, *1),(D1,...,DN, *2),...)
+        """
+        raise NotImplementedError
+
+    @staticmethod
+    def underlying_set_sizes():
+        """
+        returns number of possible distinct elements of each underlying set, if finite
+        """
+        raise NotImplementedError
+
+    @property
+    def representation(self):
+        """
+        Returns: representation of self, likely a tuple of tensors
+            often this is the same as self.observation, (i.e. for perfect info games)
+        all information required to play the game must be obtainable from representation
+        i.e. self.from_represnetation(self.represnetation) must be functionally equivalent to self
+
+        should return clones of any internal variables
+        """
+        raise NotImplementedError
+
+    @staticmethod
+    def from_representation(representation):
+        """
+        returns a SubsetGame instance from the output of self.get_representation
+        Args:
+            representation: output of self.get_representation
+        Returns: SubsetGame object
+        """
+        raise NotImplementedError
+
+    def make_move(self, local_move):
+        """
+        gets resulting SubsetGame object of taking specified move from this state
+        this may not be deterministic,
+        cannot be called on terminal states
+        Args:
+            local_move: a subset of the possible board indices, a tuple of N-tuples
+            or END_TURN token for ending turn
+        Returns:
+            copy of SubsetGame that represents the result of taking the move
+        """
+        raise NotImplementedError
+
+    def is_terminal(self):
+        """
+        returns if current game has terminated
+        CANNOT BE PROBABILISTIC
+            if there is a probabilistic element to termination,
+                the probabilities must be calculated upon creation of this object and stored
+        Returns: boolean
+        """
+        raise NotImplementedError
+
+    def get_result(self):
+        """
+        can only be called on terminal states
+        returns an outcome for each player
+        Returns: K-tuple of outcomes for each player
+            outcomes are generally in the range [0,1] and sum to 1
+            i.e. in a 1v1 game, outcomes would be (1,0) for p0 win, (0,1) for p1, and (.5,.5) for a tie
+            in team games this can be changed to give teammates the same reward, and have the sum across teams be 1
+        """
+        raise NotImplementedError
+
     @staticmethod
     def fixed_obs_shape():
         raise NotImplementedError
@@ -285,7 +405,7 @@ class FixedSizeSubsetGame(SubsetGame):
     @property
     def observation_shape(self):
         """
-        observation is shapes (D1,...,DN, *), (D1,...,DN, N), T)
+        observation is shapes ((D1,...,DN, *1),(D1,...,DN, *2),...), (D1,...,DN, N), T)
         this method returns those shapes
         """
         return self.fixed_obs_shape()
