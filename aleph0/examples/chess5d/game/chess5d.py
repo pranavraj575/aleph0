@@ -374,7 +374,7 @@ class Chess5d(SubsetGame):
                     pos += vec
                     while (self.idx_exists(pos[:2], pos[2:]) and
                            (P.player_of(piece) != P.player_of(self.get_piece(pos)))):
-                        yield tuple(pos)
+                        yield tuple(tt.item() for tt in pos)
                         if (P.player_of(self.get_piece(pos)) is not None) or pid == P.KING:
                             # end of the line, or the king which moves single spaces
                             break
@@ -448,7 +448,7 @@ class Chess5d(SubsetGame):
                                 works = False
                                 break
                         if works:
-                            yield (idx_time, idx_dim, idx_i, idx_j + 2*dir)
+                            yield (idx_time, idx_dim, idx_i, (idx_j + 2*dir).item())
 
     def board_all_possible_moves(self, global_td_idx, castling=True):
         """
@@ -1071,11 +1071,12 @@ if __name__ == '__main__':
     chess = Chess5d()
     chess = chess.make_move(((0, 0, 1, 4), (0, 0, 3, 4)))
     chess = chess.make_move(next(chess.get_all_valid_moves()))
-    chess = chess.make_move(((1, 0, 1, 2), (1, 0, 2, 2)))
+    chess = chess.make_move(next(chess.get_all_valid_moves()))
     chess = chess.make_move(next(chess.get_all_valid_moves()))
     chess = chess.make_move(((2, 0, 0, 3), (2, 0, 4, 7)))
+
     chess = chess.make_move(next(chess.get_all_valid_moves()))
-    chess = chess.make_move(next(chess.get_all_valid_moves()))
+    chess = chess.make_move(((3, 0, 1, 2), (3, 0, 2, 2)))
     chess = chess.make_move(next(chess.get_all_valid_moves()))
     chess = chess.make_move(((4, 0, 4, 7), (4, 0, 7, 4)))
     chess.render()
