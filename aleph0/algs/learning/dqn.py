@@ -3,55 +3,8 @@ from torch import nn
 
 from aleph0.game import FixedSizeSubsetGame
 from aleph0.algs.algorithm import Algorithm
-from aleph0.networks import FFN
+from aleph0.networks import FFN, PieceEmbedder, FlattenEmbedder, BoardSetEmbedder
 from collections import deque
-
-
-class BoardEmbedder(nn.Module):
-    def __init__(self,
-                 underlying_set_shape,
-                 piece_embedding_dim,
-                 underlying_set_size=None,
-                 piece_embedding=None,
-                 ):
-        """
-
-        Args:
-            underlying_set_shape: shape of pieces
-            underlying_set_size: if underlying_set_shape is (), this mut be an integer
-            piece_embedding_dim: dimenions to embed pieces into
-            piece_embedding: embedding of pieces, if availabel
-                takes the last few dimensions as the pieces and embeds them into piece_embedding_dim
-        """
-        super().__init__()
-        if underlying_set_shape == ():
-            assert underlying_set_size is not None;
-            "discrete underlying sets must have size specified"
-        self.flatten_piec = None
-        if piece_embedding is None:
-            num_piece_dims = len(underlying_set_shape)
-            if num_piece_dims == 0:
-                self.piece_embed = nn.Embedding(num_embeddings=underlying_set_size,
-                                                embedding_dim=piece_embedding_dim,
-                                                )
-            else:
-                piece_input_dim = 1
-                for item in underlying_set_shape:
-                    piece_input_dim = int(piece_input_dim*item)
-                self.flatten_piec = nn.Flatten(-num_piece_dims, -1)
-                self.piece_embed = nn.Linear(in_features=piece_input_dim,
-                                             out_features=piece_embedding_dim,
-                                             )
-        else:
-            self.piece_embed = piece_embedding
-        self.board_flat = nn.Flatten(1, -1)
-
-    def forward(self, board):
-        if self.flatten_piec is not None:
-            board = self.flatten_piec(board)
-        board = self.piece_embed.forward(board)
-        board = self.board_flat.forward(board)
-        return board
 
 
 class DQNFFN(nn.Module):
@@ -63,12 +16,22 @@ class DQNFFN(nn.Module):
                  action_embedding_dim=32,
                  piece_embeddings=None,
                  piece_embedding_dims=32,
+                 overall_piece_embedding_dim=32,
                  underlying_set_sizes=None,
                  hidden_layers=(64, 64),
                  ):
         super().__init__()
 
-        board_shapes, _, input_vec_size = obs_shape
+        board_shapes, pos_shape, input_vec_size = obs_shape
+        # pos shape is (D1,...,DN, N)
+        # board shape is (D1,...,DN)
+        board_shape = pos_shape[:-1]
+        total_board_dim = 0
+        board_dims = 1
+        for item in board_shape:
+            board_dims = int(board_dims*item)
+        total_board_dim += board_dims
+
         if underlying_set_sizes is None:
             underlying_set_sizes = [None for _ in board_shapes]
         if isinstance(piece_embedding_dims, int):
@@ -76,34 +39,35 @@ class DQNFFN(nn.Module):
         if piece_embeddings is None:
             piece_embeddings = [None for _ in board_shapes]
         board_embedders = []
-        total_board_dim = 0
-        for (board_shape,
-             underlying_set_shape,
+        for (underlying_set_shape,
              underlying_set_size,
              piece_embedding,
-             piece_embedding_dim) in zip(board_shapes,
+             piece_embedding_dim) in zip(
                                          underlying_set_shapes,
                                          underlying_set_sizes,
                                          piece_embeddings,
                                          piece_embedding_dims):
-            board_embedders.append(
-                BoardEmbedder(underlying_set_shape=underlying_set_shape,
-                              piece_embedding_dim=piece_embedding_dim,
-                              underlying_set_size=underlying_set_size,
-                              piece_embedding=piece_embedding,
-                              )
-            )
-            board_dims = 1
-            for item in board_shape:
-                board_dims = int(board_dims*item)
-            total_board_dim += board_dims*piece_embedding_dim
-        self.board_embedders = nn.ModuleList(board_embedders)
+            if piece_embedding is not None:
+                board_embedders.append(piece_embedding)
+            else:
+                if underlying_set_shape == ():
+                    assert isinstance(underlying_set_size, int)
+                    board_embedders.append(PieceEmbedder(embedding_dim=piece_embedding_dim,
+                                                         piece_count=underlying_set_size))
+                else:
+                    board_embedders.append(FlattenEmbedder(input_shape=underlying_set_shape))
+
+        self.boardsetemb = BoardSetEmbedder(embedding_dim=overall_piece_embedding_dim,
+                                            board_embedding_list=board_embedders)
+        self.flatten_board=nn.Flatten()
         self.action_embed = nn.Embedding(num_embeddings=num_actions,
                                          embedding_dim=action_embedding_dim,
                                          )
         self.ffn = FFN(output_dim=output_dim,
                        hidden_layers=hidden_layers,
-                       input_dim=total_board_dim + list(input_vec_size)[0] + action_embedding_dim,
+                       input_dim=total_board_dim*overall_piece_embedding_dim +
+                                 list(input_vec_size)[0] +
+                                 action_embedding_dim,
                        )
 
     def forward(self, obs, action):
@@ -112,12 +76,10 @@ class DQNFFN(nn.Module):
         aciton s an (N,) batch of actions
         """
         boards, _, vec = obs
-        # tuple of (N, board_dim) boards
-        # sum of all board_dims is total_dim
-        board_embeddings = tuple(be.forward(board) for board, be in zip(boards, self.board_embedders))
-        # (N, total_board_dim) boards
-        board_embeddings = torch.cat(board_embeddings, dim=1)
-        sa = torch.cat((board_embeddings, vec, self.action_embed(action)), dim=1)
+        # size (N, total_board_dim*overall_piece_embedding_dim)
+        board_embedding=self.flatten_board(self.boardsetemb.forward(boards))
+
+        sa = torch.cat((board_embedding, vec, self.action_embed(action)), dim=1)
         output = self.ffn.forward(sa)
         return output
 
@@ -218,7 +180,7 @@ class DQNAlg(Algorithm):
             if not boards:
                 for _ in bs:
                     boards.append([])
-            for bl, b in zip(boards,bs):
+            for bl, b in zip(boards, bs):
                 bl.append(b)
             poss.append(p)
             vecs.append(v)
@@ -330,19 +292,18 @@ if __name__ == '__main__':
 
     game = Toe()
     alg = DQNAlg_from_game(game=game)
-    game = game.make_move(((0, 1),))
-    game = game.make_move(((2, 2),))
-    game = game.make_move(((0, 2),))
     game = game.make_move(((0, 0),))
+    game = game.make_move(((1, 0),))
+    game = game.make_move(((0, 1),))
     game = game.make_move(((1, 1),))
-    game = game.make_move(((2, 0),))
+
     print(game)
     print(torch.round(alg.get_q_values(game=game), decimals=2))
 
     # should learn the correct winning move
     # in this game, player 0 has one winning move and two losing moves
     # thus, algorithm should result in q values of [(0,1),(0,1),(1,0)]
-    for i in range(1000):
+    for i in range(10000):
         alg.train_episode(game=game, epsilon=.1)
     print(torch.round(alg.get_q_values(game=game), decimals=2))
 
@@ -350,7 +311,7 @@ if __name__ == '__main__':
     # ideally this algorithm will learn the same thing (slower though, since it must train on the entire game)
     # also this trining will take 9 times longer since games are 9 times as long
     alg = DQNAlg_from_game(game=game)
-    save_path='temp'
+    save_path = 'temp'
     if os.path.exists(save_path):
         alg.load(save_path)
         print('loaded value')

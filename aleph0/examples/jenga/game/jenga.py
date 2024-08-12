@@ -6,6 +6,8 @@ from scipy.spatial import ConvexHull
 import numpy as np
 import torch
 
+from aleph0.game import SubsetGame
+
 TOLERANCE = 1e-10
 
 
@@ -79,12 +81,17 @@ def hull_score(point, hull, tolerance=TOLERANCE):
 
 
 class Block:
-    JENGA_BLOCK_DIM = np.array((.075, .025, .015))  # in meters
-    JENGA_BLOCK_SPACING = .005  # in meters
+    STD_BLOCK_DIM = np.array((.075, .025, .015))  # in meters
+    STD_BLOCK_SPACING = .005  # in meters
 
-    WOOD_DENSITY = 0.5  # kg/m^3
+    STD_WOOD_DENSITY = 0.5  # kg/m^3
 
-    def __init__(self, pos, yaw=0.):
+    def __init__(self,
+                 pos,
+                 yaw=0.,
+                 block_dim=None,
+                 density=None,
+                 ):
         """
         represents one block
         :param pos: position, np array
@@ -94,6 +101,13 @@ class Block:
         """
         self.pos = pos
         self.yaw = yaw
+        if block_dim is None:
+            block_dim = Block.STD_BLOCK_DIM
+        if density is None:
+            density = Block.STD_WOOD_DENSITY
+        self.block_dim = block_dim
+        self.density = density
+        self.mass = np.prod(self.block_dim)*self.density
 
     def representation(self):
         """
@@ -101,7 +115,18 @@ class Block:
 
         x,y,z,angle
         """
-        return np.concatenate((self.pos, [self.yaw]))
+        return np.concatenate((self.pos, self.block_dim, [self.yaw, self.density]))
+
+    @staticmethod
+    def from_representation(representation):
+        pos = representation[:3]
+        block_dim = representation[3:6]
+        yaw, density = representation[6:]
+        return Block(pos=pos,
+                     yaw=yaw,
+                     block_dim=block_dim,
+                     density=density,
+                     )
 
     def vertices(self):
         """
@@ -109,7 +134,7 @@ class Block:
         :return: 8x3 array
         """
 
-        dx, dy, dz = Block.JENGA_BLOCK_DIM
+        dx, dy, dz = self.block_dim
 
         return np.array([[
             (X,
@@ -124,7 +149,7 @@ class Block:
         ordered in a cycle
         :return: 4x2 array
         """
-        dx, dy, _ = Block.JENGA_BLOCK_DIM
+        dx, dy, _ = self.block_dim
         return self.pos[:2] + np.array([[
             (dx*(x_i - .5)*np.cos(self.yaw) - dy*(y_i - .5)*np.sin(self.yaw),
              dx*(x_i - .5)*np.sin(self.yaw) + dy*(y_i - .5)*np.cos(self.yaw),
@@ -139,16 +164,10 @@ class Block:
         return self.pos
 
     def __eq__(self, other):
-        return np.array_equal(self.pos, other.pos) and self.yaw == other.yaw
-
-
-def block_from_vector(vector):
-    """
-    returns the block encoded by vector
-
-    x,y,z,angle = vector
-    """
-    return Block(pos=vector[:3], yaw=vector[3])
+        return (np.array_equal(self.pos, other.pos) and
+                self.yaw == other.yaw and
+                np.array_equal(self.block_dim, other.block_dim) and
+                self.density == other.density)
 
 
 def random_block(L, i, pos_std=0., angle_std=0.):
@@ -165,13 +184,13 @@ def random_block(L, i, pos_std=0., angle_std=0.):
     rot = (L%2)*np.pi/2  # rotate yaw if odd level
 
     pos = np.zeros(3)
-    pos += (0, 0, (L + 0.5)*Block.JENGA_BLOCK_DIM[2])  # height of level + half the height of a block (since COM)
+    pos += (0, 0, (L + 0.5)*Block.STD_BLOCK_DIM[2])  # height of level + half the height of a block (since COM)
 
-    width = Block.JENGA_BLOCK_DIM[1]
+    width = Block.STD_BLOCK_DIM[1]
     if L%2:
-        pos += ((i - 1)*(width + Block.JENGA_BLOCK_SPACING), 0, 0)
+        pos += ((i - 1)*(width + Block.STD_BLOCK_SPACING), 0, 0)
     else:
-        pos += (0, (i - 1)*(width + Block.JENGA_BLOCK_SPACING), 0)
+        pos += (0, (i - 1)*(width + Block.STD_BLOCK_SPACING), 0)
 
     rot = rot + np.random.normal(0, angle_std)
     pos = pos + (np.random.normal(0, pos_std), np.random.normal(0, pos_std), 0.)
@@ -179,7 +198,7 @@ def random_block(L, i, pos_std=0., angle_std=0.):
     return Block(pos=pos, yaw=rot)
 
 
-class Tower:
+class Jenga(SubsetGame):
     """
     jenga tower representation
     list of layers, each layer is a list of three booleans
@@ -187,23 +206,35 @@ class Tower:
         all methods like "remove_block" create a new instance of the class
     """
 
-    TOWER_DIAMETER = 2*Block.JENGA_BLOCK_SPACING + 3*Block.JENGA_BLOCK_DIM[1]  # theoretical size of a layer
+    TOWER_DIAMETER = 2*Block.STD_BLOCK_SPACING + 3*Block.STD_BLOCK_DIM[1]  # theoretical size of a layer
 
     INITIAL_SIZE = 5  # number of levels in initial tower
 
-    def __init__(self, block_info=None, default_ht=INITIAL_SIZE, pos_std=.001, angle_std=.003):
+    def __init__(self,
+                 num_players,
+                 current_player=0,
+                 block_info=None,
+                 pos_std=.001,
+                 angle_std=.003,
+                 ):
         """
         :param block_info: list of block triples, represents each layer
         :param default_ht: height to create tower if block info is None
         :param pos_std: stdev to use for positions if randomly initializing/randomly placing
         :param angle_std: stdev to use for angles if randomly initializing/randomly placing
         """
+        super().__init__(num_players=num_players,
+                         current_player=current_player,
+                         subset_size=2,
+                         special_moves=[],
+                         )
+
         self.pos_std = pos_std
         self.angle_std = angle_std
         if block_info is None:
             block_info = [
                 [random_block(L=level, i=i, pos_std=pos_std, angle_std=angle_std) for i in range(3)]
-                for level in range(default_ht)
+                for level in range(Jenga.INITIAL_SIZE)
             ]
         self.block_info = block_info
 
@@ -227,12 +258,13 @@ class Tower:
         # going backwards so we can accumulate
         N = 0  # running count
         MOMENT = np.zeros(3)  # running moment (sum of positions of blocks, not averaged yet)
+        MASS = 0
         for layer in self.block_info[::-1]:
             N += sum([t is not None for t in layer])
-            MOMENT += np.sum([b.com() for b in layer if b is not None], axis=0)
-
+            MOMENT += np.sum([b.com()*b.mass for b in layer if b is not None], axis=0)
+            MASS += sum([b.mass for b in layer if b is not None])
             self.Ns.append(N)
-            self.COMs.append(MOMENT/N)
+            self.COMs.append(MOMENT/MASS)
 
             V = np.concatenate([t.vertices_xy() for t in layer if t is not None], axis=0)
             self.hulls.append(ConvexHull(V))
@@ -351,7 +383,7 @@ class Tower:
         returns an (resolution x resolution) numpy array 'image'
         """
         if radius is None:
-            radius = 1.2*Tower.TOWER_DIAMETER/2
+            radius = 1.2*Jenga.TOWER_DIAMETER/2
         grid = (np.arange(resolution)/(resolution - 1) - .5)*2*radius
         xv, yv = np.meshgrid(grid, grid, indexing='xy')
         points_arr = np.stack((xv, yv), axis=2)
@@ -518,7 +550,7 @@ class Tower:
                 print("WARNING: BLOCK '" + str(i) + "' INVALID TO REMOVE ON LAYER" + str(
                     [(t is not None) for t in self.block_info[L]]))
 
-        return Tower(
+        return Jenga(
             [
                 [(None if eye == i and ell == L else block) for (eye, block) in enumerate(level)]
                 for (ell, level) in enumerate(self.block_info)],
@@ -544,13 +576,13 @@ class Tower:
 
         if self.top_layer_filled():
             new_block = random_block(L=self.height(), i=i, pos_std=blk_pos_std, angle_std=blk_angle_std)
-            return Tower(self.block_info + [[(new_block if eye == i else None) for eye in range(3)]],
+            return Jenga(self.block_info + [[(new_block if eye == i else None) for eye in range(3)]],
                          pos_std=self.pos_std,
                          angle_std=self.angle_std,
                          )
         else:
             new_block = random_block(L=self.height() - 1, i=i, pos_std=blk_pos_std, angle_std=blk_angle_std)
-            return Tower(
+            return Jenga(
                 [
                     [(new_block if eye == i and L == self.height() - 1 else block) for (eye, block) in enumerate(level)]
                     for (L, level) in enumerate(self.block_info)],
@@ -602,6 +634,119 @@ class Tower:
             for (L, layer) in enumerate(self.block_info)], axis=0)
         return block_info
 
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+    # CLASS METHODS                                                                         #
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+    def get_valid_next_selections(self, move_prefix=()):
+        """
+        gets valid choices for next index to select
+            MUST BE DETERMINISTIC
+            moves must always be returned in the same order
+        Args:
+            move_prefix: indices selected so far, must be less than self.subsetsize
+        Returns:
+            iterable of N tuples indicating which additions are valid
+        """
+        raise NotImplementedError
+
+    def valid_special_moves(self):
+        """
+        returns iterable of special moves possible from current position
+        MUST BE DETERMINISTIC, always return moves in same order
+        Returns: boolean
+        """
+        if not self.special_moves:
+            return iter(())
+        else:
+            raise NotImplementedError
+
+    @property
+    def observation(self):
+        """
+        Returns: (board, position, info vector), as observed by the current player
+            of shapes ((D1,...,DN, *1),(D1,...,DN, *2),...), (D1,...,DN, N), (T,))
+        should return clones of any internal variables
+
+        This can involve flipping the board and such, if necessary
+        note that indices may also need to be flipped
+            i.e. the opponent's 0 may be different
+        """
+        raise NotImplementedError
+
+    @staticmethod
+    def num_observation_boards():
+        """
+        Returns: number of boards in (D1,...,DN, *1),(D1,...,DN, *2),...)
+        """
+        raise NotImplementedError
+
+    @staticmethod
+    def underlying_set_sizes():
+        """
+        returns number of possible distinct elements of each underlying set, if finite
+        """
+        raise NotImplementedError
+
+    @property
+    def representation(self):
+        """
+        Returns: representation of self, likely a tuple of tensors
+            often this is the same as self.observation, (i.e. for perfect info games)
+        all information required to play the game must be obtainable from representation
+        i.e. self.from_represnetation(self.represnetation) must be functionally equivalent to self
+
+        should return clones of any internal variables
+        """
+        return self.block_info, self.num_players, self.current_player
+
+    @staticmethod
+    def from_representation(representation):
+        """
+        returns a SubsetGame instance from the output of self.get_representation
+        Args:
+            representation: output of self.get_representation
+        Returns: SubsetGame object
+        """
+        block_info, num_players, current_player = representation
+        return Jenga(block_info=block_info,
+                     num_players=num_players,
+                     current_player=current_player,
+                     )
+
+    def make_move(self, local_move):
+        """
+        gets resulting SubsetGame object of taking specified move from this state
+        this may not be deterministic,
+        cannot be called on terminal states
+        Args:
+            local_move: a subset of the possible obs board indices, a tuple of N-tuples
+        Returns:
+            copy of SubsetGame that represents the result of taking the move
+        """
+        raise NotImplementedError
+
+    def is_terminal(self):
+        """
+        returns if current game has terminated
+        CANNOT BE PROBABILISTIC
+            if there is a probabilistic element to termination,
+                the probabilities must be calculated upon creation of this object and stored
+        Returns: boolean
+        """
+        raise NotImplementedError
+
+    def get_result(self):
+        """
+        can only be called on terminal states
+        returns an outcome for each player
+        Returns: K-tuple of outcomes for each player
+            outcomes are generally in the range [0,1] and sum to 1
+            i.e. in a 1v1 game, outcomes would be (1,0) for p0 win, (0,1) for p1, and (.5,.5) for a tie
+            in team games this can be changed to give teammates the same reward, and have the sum across teams be 1
+        """
+        raise NotImplementedError
+
     def __eq__(self, other):
         return self.block_info == other.block_info
 
@@ -637,30 +782,30 @@ def tower_from_array(arr):
         Li = round(vec[0])
         L, i = Li//3, Li%3
         block_info[L][i] = block_from_vector(vec[1:])
-    return Tower(block_info=block_info)
+    return Jenga(block_info=block_info)
 
 
 if __name__ == "__main__":
     b = random_block(1, 1, pos_std=0.)
-    t = Tower(pos_std=0.001, angle_std=0.005)
+    t = Jenga(pos_std=0.001, angle_std=0.005)
     from PIL import Image
 
     layer0 = t.image_of_layer(0, resolution=512)
     img = Image.fromarray(layer0*255)
     img.show()
-    t = t.remove_block((Tower.INITIAL_SIZE - 2, 2))
+    t = t.remove_block((Jenga.INITIAL_SIZE - 2, 2))
 
-    layer = t.image_of_layer(Tower.INITIAL_SIZE - 2, resolution=512)
+    layer = t.image_of_layer(Jenga.INITIAL_SIZE - 2, resolution=512)
     img = Image.fromarray(layer*255)
     img.show()
     print(t)
 
     print(t.deterministic_falls())
     print([(t.raw_score_at_layer(i)) for i in range(len(t.block_info) - 1)])
-    t = t.remove_block((Tower.INITIAL_SIZE - 2, 1))
+    t = t.remove_block((Jenga.INITIAL_SIZE - 2, 1))
     print([(t.raw_score_at_layer(i)) for i in range(len(t.block_info) - 1)])
     print(t.deterministic_falls())
-    t: Tower
+    t: Jenga
     t = t.place_block(0)
     t = t.place_block(1)
     t = t.place_block(2)
