@@ -29,7 +29,7 @@ class Timeline:
         )
 
     def flipped(self):
-        return Timeline(board_list=[board.flipped_board() for board in self.board_list],
+        return Timeline(board_list=[board.flipped() for board in self.board_list],
                         start_idx=self.start_idx,
                         )
 

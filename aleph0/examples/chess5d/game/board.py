@@ -38,7 +38,7 @@ class Board:
                                                                 for piece in row])
         self.board = board
 
-    def flipped_board(self):
+    def flipped(self):
         return Board(board=P.flip_piece(torch.rot90(self.board, 2)), )
 
     def get_piece(self, idx):

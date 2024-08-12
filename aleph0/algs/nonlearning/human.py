@@ -48,9 +48,10 @@ class Human(Algorithm):
                 if len(move_prefix) > 0:
                     move_prefix = move_prefix[:-1]
             if selected is not None:
-                next_game = game.make_move(selected)
+                disp_game = game.make_move(selected)
+                disp_game.current_player=game.current_player
+                disp_game.render()
                 print('next state:')
-                next_game.render()
                 print('move made:', selected)
                 if input('redo? [y/n]: ').lower() == 'y':
                     move_prefix = ()
