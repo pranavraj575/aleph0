@@ -350,14 +350,15 @@ if __name__ == '__main__':
     # ideally this algorithm will learn the same thing (slower though, since it must train on the entire game)
     # also this trining will take 9 times longer since games are 9 times as long
     alg = DQNAlg_from_game(game=game)
-    if os.path.exists('test'):
-        alg.load('test')
+    save_path='temp'
+    if os.path.exists(save_path):
+        alg.load(save_path)
         print('loaded value')
         print(torch.round(alg.get_q_values(game=game), decimals=2))
     for i in range(1000):
         alg.train_episode(game=Toe(), epsilon=.1)
         print(i, end='         \r')
-    alg.save('test')
+    alg.save(save_path)
     print(torch.round(alg.get_q_values(game=game), decimals=2))
 
     from aleph0.algs import Human, play_game, Exhasutive
