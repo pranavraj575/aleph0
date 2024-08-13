@@ -1,7 +1,7 @@
 import os, shutil, torch, pickle
 from torch import nn
 
-from aleph0.game import FixedSizeSubsetGame
+from aleph0.game import FixedSizeSelectionGame
 from aleph0.algs.algorithm import Algorithm
 from aleph0.networks import FFN, PieceEmbedder, FlattenEmbedder, BoardSetEmbedder
 from collections import deque
@@ -143,9 +143,9 @@ class DQNAlg(Algorithm):
         f.close()
 
     def add_to_buffer(self,
-                      game: FixedSizeSubsetGame,
+                      game: FixedSizeSelectionGame,
                       move,
-                      next_game: FixedSizeSubsetGame,
+                      next_game: FixedSizeSelectionGame,
                       ):
         if next_game.is_terminal():
             result = torch.tensor(next_game.get_result())
@@ -205,7 +205,7 @@ class DQNAlg(Algorithm):
         self.optim.step()
         return loss.item()
 
-    def train_episode(self, game: FixedSizeSubsetGame, batch_size=128, epsilon=.05, depth=float('inf')):
+    def train_episode(self, game: FixedSizeSelectionGame, batch_size=128, epsilon=.05, depth=float('inf')):
         """
         trains a full episode of game, samples buffer at end
         Args:
@@ -254,7 +254,7 @@ class DQNAlg(Algorithm):
         # permutation_to_standard_pos encodes where each player was sent
         return values[:, permuation]
 
-    def get_value(self, game: FixedSizeSubsetGame, moves=None):
+    def get_value(self, game: FixedSizeSelectionGame, moves=None):
         """
         gets values of game for all players (permuted correctly)
         checks all q vlaues, then maximizes for game.current_player
@@ -265,7 +265,7 @@ class DQNAlg(Algorithm):
         values = self.get_q_values(game=game, moves=moves)
         return max([value for value in values], key=lambda v: v[game.current_player])
 
-    def get_policy_value(self, game: FixedSizeSubsetGame, moves=None):
+    def get_policy_value(self, game: FixedSizeSelectionGame, moves=None):
         move_values = self.get_q_values(game=game, moves=moves)
         pol = torch.softmax(move_values[:, game.current_player]*self.softmax_constant, dim=-1)
         values = torch.zeros(game.num_players)
@@ -274,7 +274,7 @@ class DQNAlg(Algorithm):
         return pol.detach(), values.detach()
 
 
-def DQNAlg_from_game(game: FixedSizeSubsetGame, gamma=.99, softmax_constant=10.):
+def DQNAlg_from_game(game: FixedSizeSelectionGame, gamma=.99, softmax_constant=10.):
     return DQNAlg(num_actions=game.possible_move_cnt(),
                   obs_shape=game.fixed_obs_shape(),
                   underlying_set_shapes=game.get_underlying_set_shapes(),

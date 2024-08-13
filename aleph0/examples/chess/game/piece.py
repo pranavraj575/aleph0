@@ -31,7 +31,9 @@ class P:
 
     PROMOTION = QUEEN
 
-    TOTAL_PIECES = 27
+    # asumeing PASSANTABLE PAWN is the largest piece id
+    # double this, plus the empty square
+    TOTAL_PIECES = PASSANTABLE_PAWN*2 + 1
 
     @staticmethod
     def flip_player(player):
@@ -138,7 +140,7 @@ class P:
     @staticmethod
     def remove_passant(piece):
         player = P.player_of(piece)
-        if player is not None and (P.piece_id(piece)==P.PAWN):
+        if player is not None and (P.piece_id(piece) == P.PAWN):
             if P.is_unmoved(piece):
                 return P.UNMOVED_PAWN*P.player_to_sign(player)
             else:
@@ -171,12 +173,12 @@ class P:
         Returns:
 
         """
-        # lowest possible piece number is -13
-        return piece + 13
+        # lowest possible piece number is -PASSANTABLE_PAWN
+        return piece + P.PASSANTABLE_PAWN
 
     @staticmethod
     def denumber(number):
-        return number - 13
+        return number - P.PASSANTABLE_PAWN
 
 
 if __name__ == '__main__':

@@ -1,13 +1,13 @@
 import os, pickle
 
-from aleph0.game import SubsetGame
+from aleph0.game import SelectionGame
 
 
 class Algorithm:
     def __init__(self):
         self.info = dict()
 
-    def get_policy_value(self, game: SubsetGame, moves=None):
+    def get_policy_value(self, game: SelectionGame, moves=None):
         """
         gets the distribution of best moves from the state of game, as well as the value for each player
         requires that game is not at a terminal state

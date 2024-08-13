@@ -1,9 +1,9 @@
 import torch
 
-from aleph0.game.game import FixedSizeSubsetGame
+from aleph0.game import FixedSizeSelectionGame
 
 
-class Toe(FixedSizeSubsetGame):
+class Toe(FixedSizeSelectionGame):
     EMPTY = 2
     P0 = 0
     P1 = 1
@@ -31,12 +31,11 @@ class Toe(FixedSizeSubsetGame):
     def underlying_set_sizes():
         return (3,)
 
-    @staticmethod
-    def possible_move_cnt():
+    def possible_move_cnt(self):
+        print('here',super().possible_move_cnt())
         return 9
 
-    @staticmethod
-    def index_to_move(idx):
+    def index_to_move(self, idx):
         return ((idx//3, idx%3),)
 
     def move_to_idx(self, move):
@@ -118,3 +117,4 @@ if __name__ == '__main__':
 
         if toe.is_terminal(): break
     print(toe.get_result())
+    toe.possible_move_cnt()

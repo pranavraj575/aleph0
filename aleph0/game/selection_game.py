@@ -1,4 +1,8 @@
-class SubsetGame:
+import itertools
+import numpy as np
+
+
+class SelectionGame:
     """
     base class for an N-dimensional board game with K players
     each player makes a move by selecting a subset of the board positions of fixed size
@@ -48,7 +52,7 @@ class SubsetGame:
                     i.e. avoid 'special moves' like ((1,2),(2,3)), and instead name them things like 'END_TURN'
         """
         self.current_player = current_player
-        self.subset_size = subset_size
+        self.selection_size = subset_size
         self.special_moves = special_moves
         self.num_players = num_players
 
@@ -228,7 +232,7 @@ class SubsetGame:
             for move in self.valid_special_moves():
                 yield move
 
-        if len(move_prefix) == self.subset_size:
+        if len(move_prefix) == self.selection_size:
             yield move_prefix
         else:
             for next_move in self.get_valid_next_selections(move_prefix=move_prefix):
@@ -266,7 +270,7 @@ class SubsetGame:
         print(self.__str__())
 
 
-class FixedSizeSubsetGame(SubsetGame):
+class FixedSizeSelectionGame(SelectionGame):
     def __init__(self, num_players, current_player, subset_size, special_moves):
         super().__init__(num_players=num_players,
                          current_player=current_player,
@@ -379,28 +383,47 @@ class FixedSizeSubsetGame(SubsetGame):
     def fixed_obs_shape():
         raise NotImplementedError
 
-    @staticmethod
-    def possible_move_cnt():
-        """
-        return number of possible moves
-        """
-        raise NotImplementedError
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+    # SHOULD PROBABLY IMPLEMENT (current implementation is bad)                             #
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
-    @staticmethod
-    def index_to_move(idx):
+    def index_to_move(self, idx):
         """
         convert idx into a valid move
         """
-        raise NotImplementedError
+        if 'ind_to_move' not in dir(self):
+            self.ind_to_move = []
+            _, pos_shape, _ = self.fixed_obs_shape()
+            board_shape = pos_shape[:-1]
 
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-    # NOT REQUIRED TO IMPLEMENT (either extra, or current implementation works fine)        #
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+            all_indices = itertools.product(*[range(t) for t in board_shape])
+            # all possible selections of self.subset_size
+            self.ind_to_move = list(itertools.product(all_indices, repeat=self.selection_size))
+            self.ind_to_move.extend(list(self.special_moves))
+        return self.ind_to_move[idx]
+
     def move_to_idx(self, move):
         for i in range(self.possible_move_cnt()):
             if self.index_to_move(i) == move:
                 return i
         return None
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+    # NOT REQUIRED TO IMPLEMENT (either extra, or current implementation works fine)        #
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+    def possible_move_cnt(self):
+        """
+        return number of possible moves
+        by default does the following calculation:
+            number of board squares is the product of the board dimensions
+            the number of ways to choose self.selection_size squares is (number of board squares)^(self.selection_size)
+            the total possible moves is that plus the number of possible special moves
+        """
+        _, pos_shape, _ = self.fixed_obs_shape()
+        board_squares = np.prod(pos_shape[:-1]).item()
+
+        return board_squares**self.selection_size + len(self.special_moves)
+
 
     @property
     def observation_shape(self):

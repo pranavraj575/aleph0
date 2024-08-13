@@ -1,9 +1,9 @@
 import torch
 
-from aleph0.game.game import SubsetGame
+from aleph0.game.selection_game import SelectionGame
 
 
-def play_game(game: SubsetGame, alg_list, n=1, save_histories=True):
+def play_game(game: SelectionGame, alg_list, n=1, save_histories=True):
     """
     plays n games starting from game state, using each alg in alg_list as player
     repeatedly samples moves from alg.get_policy_value

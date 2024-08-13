@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from aleph0.game import SubsetGame
+from aleph0.game import SelectionGame
 from aleph0.algs.algorithm import Algorithm
 
 
@@ -82,7 +82,7 @@ class Node:
         # Alphazero uses child number visits because apparently this is less prone to outliers
         return self.child_number_visits/np.sum(self.child_number_visits)
 
-    def select_leaf(self, game: SubsetGame):
+    def select_leaf(self, game: SelectionGame):
         """
         selects leaf of self, makes moves on game along the way
         :return: leaf, resulting game
@@ -121,7 +121,7 @@ class Node:
             child_priors = self.add_dirichlet_noise(child_priors=child_priors)
         self.child_priors = child_priors
 
-    def maybe_add_child(self, game: SubsetGame, move):
+    def maybe_add_child(self, game: SelectionGame, move):
         """
         makes move from current state,
             if move has not been seen, adds it to children
@@ -158,7 +158,7 @@ class Node:
             self.parent.backup(value_estimate=value_estimate)
 
 
-def UCT_search(game: SubsetGame, num_reads, policy_value_evaluator):
+def UCT_search(game: SelectionGame, num_reads, policy_value_evaluator):
     """
     :param game:
     :param player:

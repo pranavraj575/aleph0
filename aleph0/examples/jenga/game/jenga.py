@@ -6,7 +6,7 @@ from scipy.spatial import ConvexHull
 import numpy as np
 import torch
 
-from aleph0.game import SubsetGame
+from aleph0.game import SelectionGame
 
 TOLERANCE = 1e-10
 
@@ -198,7 +198,7 @@ def random_block(L, i, pos_std=0., angle_std=0.):
     return Block(pos=pos, yaw=rot)
 
 
-class Jenga(SubsetGame):
+class Jenga(SelectionGame):
     """
     jenga tower representation
     list of layers, each layer is a list of three booleans

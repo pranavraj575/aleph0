@@ -5,13 +5,12 @@ import torch
 class Board:
     BOARD_SIZE = 8
     BOARD_SHAPE = (BOARD_SIZE, BOARD_SIZE)
+    BOARD_SQUARES = BOARD_SHAPE[0]*BOARD_SHAPE[1]
 
     def __init__(self, board=None):
         if board is None:
-            board = torch.tensor([[P.EMPTY
-                                   for _ in range(Board.BOARD_SIZE)]
-                                  for _ in range(Board.BOARD_SIZE)])
-            if Board.BOARD_SIZE == 8:
+            board = torch.ones(Board.BOARD_SHAPE, dtype=torch.long)*P.EMPTY
+            if Board.BOARD_SHAPE == (8, 8):
                 back_rank = [P.UNMOVED_ROOK,
                              P.KNIGHT,
                              P.BISHOP,
@@ -21,7 +20,7 @@ class Board:
                              P.KNIGHT,
                              P.UNMOVED_ROOK,
                              ]
-            elif Board.BOARD_SIZE == 5:
+            elif Board.BOARD_SHAPE == (5, 5):
                 back_rank = [P.UNMOVED_ROOK,
                              P.KNIGHT,
                              P.BISHOP,

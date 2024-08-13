@@ -1,6 +1,6 @@
 import torch
 
-from aleph0.game import SubsetGame
+from aleph0.game import SelectionGame
 from aleph0.algs.algorithm import Algorithm
 
 
@@ -37,7 +37,7 @@ class Exhasutive(Algorithm):
         dist[indices] = 1/len(indices)
         return dist
 
-    def minimax_search(self, game: SubsetGame, moves=None):
+    def minimax_search(self, game: SelectionGame, moves=None):
         """
         minimax search on one game state
         Args:
@@ -51,7 +51,7 @@ class Exhasutive(Algorithm):
         # moves is size N
         all_values = []
         for move in moves:
-            next_game: SubsetGame = game.make_move(move)
+            next_game: SelectionGame = game.make_move(move)
             if next_game.is_terminal():
                 all_values.append(torch.tensor(next_game.get_result(),
                                                dtype=torch.float))
@@ -67,7 +67,7 @@ class Exhasutive(Algorithm):
         values = dist.view((1, -1))@all_values
         return dist, values.flatten()
 
-    def get_policy_value(self, game: SubsetGame, moves=None):
+    def get_policy_value(self, game: SelectionGame, moves=None):
         """
         averages runs of self.minimax_search to get optimal policy approximation
             if self.iterations is 1, this is equivalent to self.minimax_search

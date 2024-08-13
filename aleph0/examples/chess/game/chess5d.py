@@ -1,14 +1,14 @@
 import copy, itertools, torch
 import numpy as np
 
+from aleph0.game import SelectionGame
 from multiverse import Multiverse
 from timeline import Timeline
 from board import Board
 from piece import P
-from aleph0.game import SubsetGame
 
 
-class Chess5d(SubsetGame):
+class Chess5d(SelectionGame):
     END_TURN = 'END_TURN'
     BLOCKED_PIECE = P.TOTAL_PIECES
 
@@ -72,17 +72,6 @@ class Chess5d(SubsetGame):
         self.passed_indices = []
         self.term_ev = term_ev
 
-    def clone(self):
-        game = Chess5d(initial_multiverse=self.multiverse.clone(),
-                       first_player=self.first_player,
-                       check_validity=self.check_validity,
-                       save_moves=self.save_moves,
-                       current_player=self.current_player,
-                       )
-        game.turn_history = copy.deepcopy(self.turn_history)
-        game.prune_history()
-        return game
-
     @staticmethod
     def _flip_move(move):
         if move == Chess5d.END_TURN:
@@ -105,7 +94,7 @@ class Chess5d(SubsetGame):
                             for turn in self.turn_history]
         return out
 
-    def get_active_number(self, dim_range=None):
+    def _get_active_number(self, dim_range=None):
         """
         returns number of potential active timelines in each direction
 
@@ -115,10 +104,10 @@ class Chess5d(SubsetGame):
             dim_range = self.multiverse.get_range()
         return min(dim_range[1], -dim_range[0]) + 1
 
-    def dim_is_active(self, dim):
-        return abs(dim) <= self.get_active_number()
+    def _dim_is_active(self, dim):
+        return abs(dim) <= self._get_active_number()
 
-    def add_move_to_history(self, global_move, dimensions_spawned=None):
+    def _add_move_to_history(self, global_move, dimensions_spawned=None):
         """
         records move to undo later
         Args:
@@ -130,15 +119,15 @@ class Chess5d(SubsetGame):
         if global_move == Chess5d.END_TURN:
             self.turn_history.append([])
             if not self.save_moves:
-                self.prune_history()
+                self._prune_history()
         else:
             self.turn_history[-1].append((global_move, dimensions_spawned))
 
-    def prune_history(self):
+    def _prune_history(self):
         if len(self.turn_history) > 2:
             self.turn_history = self.turn_history[-2:]
 
-    def mutate_make_move(self, global_move):
+    def _mutate_make_move(self, global_move):
         """
         NOTE: MOVE IS GLOBAL, SO ANY MOVES VIEWED AS AN OPPONENT MUST BE CONVERTED BEFORE CALLING THIS METHOD
         moves piece at idx to end idx
@@ -152,7 +141,7 @@ class Chess5d(SubsetGame):
         """
 
         if global_move == Chess5d.END_TURN:
-            self.add_move_to_history(global_move)
+            self._add_move_to_history(global_move)
             self.current_player = P.flip_player(self.current_player)
             return P.EMPTY, self.no_moves(player=self.player_at(self.present()))
 
@@ -160,7 +149,7 @@ class Chess5d(SubsetGame):
         if self.check_validity:
             if not self.board_can_be_moved(idx[:2]):
                 raise Exception("WARNING MOVE MADE ON INVALID BOARD: " + str(idx[:2]))
-            if end_idx not in list(self.piece_possible_moves(idx)):
+            if end_idx not in list(self._piece_possible_moves(idx)):
                 raise Exception("WARNING INVALID MOVE: " + str(idx) + ' -> ' + str(end_idx))
         time1, dim1, i1, j1 = idx
         time2, dim2, i2, j2 = end_idx
@@ -214,7 +203,7 @@ class Chess5d(SubsetGame):
 
         # this is a terminal move if we just captured the king, or if the player that just moved has no moves
         # we know the player that just moved has the next move since the last move was not END_TURN
-        self.add_move_to_history(global_move=global_move, dimensions_spawned=dimensions_spawned)
+        self._add_move_to_history(global_move=global_move, dimensions_spawned=dimensions_spawned)
         return capture, terminal
 
     def undo_move(self):
@@ -322,7 +311,7 @@ class Chess5d(SubsetGame):
         for td_idx in self.multiverse.leaves():
             yield td_idx
 
-    def players_boards_with_possible_moves(self, player):
+    def _players_boards_with_possible_moves(self, player):
         """
         WILL ALWAYS RETURN BOARDS IN SAME ORDER
         """
@@ -330,7 +319,7 @@ class Chess5d(SubsetGame):
             if self.player_at(time=t) == player:
                 yield (t, d)
 
-    def piece_possible_moves(self, global_idx, castling=True):
+    def _piece_possible_moves(self, global_idx, castling=True):
         """
         returns possible moves of piece at idx
         :param global_idx: (time, dim, i, j)
@@ -450,7 +439,7 @@ class Chess5d(SubsetGame):
                         if works:
                             yield (idx_time, idx_dim, idx_i, (idx_j + 2*dir).item())
 
-    def board_all_possible_moves(self, global_td_idx, castling=True):
+    def _board_all_possible_moves(self, global_td_idx, castling=True):
         """
         WILL ALWAYS RETURN MOVES IN SAME ORDER
         """
@@ -458,10 +447,10 @@ class Chess5d(SubsetGame):
         board = self.get_board(global_td_idx)
         for (i, j) in board.pieces_of(self.player_at(t)):
             idx = (t, d, i, j)
-            for end_idx in self.piece_possible_moves(idx, castling=castling):
+            for end_idx in self._piece_possible_moves(idx, castling=castling):
                 yield idx, end_idx
 
-    def all_possible_moves(self, player=None, castling=True):
+    def _all_possible_moves(self, player=None, castling=True):
         """
         returns an iterable of all possible moves of the specified player
         if player is None, uses the first player that needs to move
@@ -474,11 +463,11 @@ class Chess5d(SubsetGame):
         if self.player_at(time=self.present()) != player:
             # the player does not have to move
             yield Chess5d.END_TURN
-        for td_idx in self.players_boards_with_possible_moves(player=player):
-            for move in self.board_all_possible_moves(global_td_idx=td_idx, castling=castling):
+        for td_idx in self._players_boards_with_possible_moves(player=player):
+            for move in self._board_all_possible_moves(global_td_idx=td_idx, castling=castling):
                 yield move
 
-    def all_possible_turn_subsets(self, player=None):
+    def _all_possible_turn_subsets(self, player=None):
         """
         returns an iterable of all possible turns subsets of the specified player
             if player is None, uses the first player that needs to move
@@ -553,7 +542,7 @@ class Chess5d(SubsetGame):
         # we will make a graph as in the description
         # this does not change theoretic runtime, but will in practice probably help a lot
 
-        possible_boards = set(self.players_boards_with_possible_moves(player=player))
+        possible_boards = set(self._players_boards_with_possible_moves(player=player))
 
         # this will be a list of lists
         # all moves on each board playable board
@@ -562,7 +551,7 @@ class Chess5d(SubsetGame):
                      possible_boards}  # edges we care about, just the edges between active boards
         non_edges = {td_idx: set() for td_idx in possible_boards}  # other moves, active -> inactive boards
         for td_idx in possible_boards:
-            for move in self.board_all_possible_moves(global_td_idx=td_idx):
+            for move in self._board_all_possible_moves(global_td_idx=td_idx):
                 start_idx, end_idx = move
                 end_td_idx = end_idx[:2]
                 if end_td_idx in possible_boards and end_td_idx != td_idx:
@@ -598,10 +587,10 @@ class Chess5d(SubsetGame):
         if player is None:
             player = self.player_at(self.present())
         sign = P.player_to_sign(player)  # direction of dimensions, 1 for black, -1 for white
-        possible_boards = set(self.players_boards_with_possible_moves(player=player))
+        possible_boards = set(self._players_boards_with_possible_moves(player=player))
         possible_presents = set(self.boards_with_possible_moves())
 
-        for moves in self.all_possible_turn_subsets(player=player):
+        for moves in self._all_possible_turn_subsets(player=player):
             possible_gifts = possible_presents.copy()  # keep track of possible presents
 
             dim_range = list(self.multiverse.get_range())
@@ -617,7 +606,7 @@ class Chess5d(SubsetGame):
                     used_dims.add(dim_range[player])
                 else:
                     used_dims.add(dim2)
-            active_number = self.get_active_number(dim_range=dim_range)
+            active_number = self._get_active_number(dim_range=dim_range)
             present = min(time for time, dim in possible_gifts if abs(dim) <= active_number)
             success = True
             for time, dim in possible_boards:
@@ -636,7 +625,7 @@ class Chess5d(SubsetGame):
         """
         try:
             # why is there no better way to check if a generator is empty
-            next(self.all_possible_moves(player=player))
+            next(self._all_possible_moves(player=player))
             return False
         except StopIteration:
             return True
@@ -648,7 +637,7 @@ class Chess5d(SubsetGame):
         """
         # we do not want castling as you cannot capture a piece with that
         # this also causes an infinite loop, as to check for castling, we must use this method
-        for move in self.all_possible_moves(player=player, castling=False):
+        for move in self._all_possible_moves(player=player, castling=False):
             if move != Chess5d.END_TURN:
                 start_idx, end_idx = move
                 if time_travel == False and start_idx[:2] == end_idx[:2]:
@@ -664,7 +653,7 @@ class Chess5d(SubsetGame):
 
         for td_idx in self.boards_with_possible_moves():
             time, dim = td_idx
-            if time == present and self.dim_is_active(dim=dim):
+            if time == present and self._dim_is_active(dim=dim):
                 board = self.get_board(td_idx)
                 self.add_board_child(global_td_idx=td_idx, board=board.clone())
                 self.passed_indices.append((time + 1, dim))
@@ -730,7 +719,7 @@ class Chess5d(SubsetGame):
                     # if we are permuting, it is possible the permutation is invalid. in this case, we do not need to
                     # inspect if the player is in check
                     if temp_game.board_can_be_moved(move[0][:2]):
-                        temp_game.mutate_make_move(move)
+                        temp_game._mutate_make_move(move)
                     else:
                         failed = True
                         break
@@ -741,7 +730,7 @@ class Chess5d(SubsetGame):
                     return False
         return True
 
-    def terminal_eval(self, mutation=False):
+    def _terminal_eval(self, mutation=False):
         """
         to be run if game has just ended (king was captured, or no moves left)
 
@@ -840,24 +829,7 @@ class Chess5d(SubsetGame):
         """
         returns the time index of the present
         """
-        return min(t for (t, d) in self.boards_with_possible_moves() if self.dim_is_active(d))
-
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-    # CLASS METHODS                                                                         #
-    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-
-    @property
-    def observation_shape(self):
-        """
-        observation is shapes ((D1,...,DN),(D1,...,DN),(D1,...,DN),(D1,...,DN)), (D1,...,DN, N), T)
-        this method returns those shapes
-        """
-        overall_range = self.multiverse.get_range()
-        time_len = self.multiverse.max_length
-        dimensions = 1 + overall_range[1] - overall_range[0]
-        I, J = Board.BOARD_SHAPE
-
-        return tuple((time_len, dimensions, I, J) for _ in range(4)), (time_len, dimensions, I, J, 4), 0
+        return min(t for (t, d) in self.boards_with_possible_moves() if self._dim_is_active(d))
 
     def potential_flip_idx(self, idx):
         """
@@ -872,6 +844,34 @@ class Chess5d(SubsetGame):
             I, J = Board.BOARD_SHAPE
             return (t, -d, I - i - 1, J - j - 1)
 
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+    # CLASS METHODS                                                                         #
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+    def clone(self):
+        game = Chess5d(initial_multiverse=self.multiverse.clone(),
+                       first_player=self.first_player,
+                       check_validity=self.check_validity,
+                       save_moves=self.save_moves,
+                       current_player=self.current_player,
+                       )
+        game.turn_history = copy.deepcopy(self.turn_history)
+        game._prune_history()
+        return game
+
+    @property
+    def observation_shape(self):
+        """
+        observation is shapes ((D1,...,DN),(D1,...,DN),(D1,...,DN),(D1,...,DN)), (D1,...,DN, N), T)
+        this method returns those shapes
+        """
+        overall_range = self.multiverse.get_range()
+        time_len = self.multiverse.max_length
+        dimensions = 1 + overall_range[1] - overall_range[0]
+        I, J = Board.BOARD_SHAPE
+
+        return tuple((time_len, dimensions, I, J) for _ in range(4)), (time_len, dimensions, I, J, 4), 0
+
     def get_valid_next_selections(self, move_prefix=()):
         """
         gets valid choices for next index to select
@@ -883,14 +883,14 @@ class Chess5d(SubsetGame):
             iterable of N tuples indicating which additions are valid
         """
         if move_prefix == ():
-            for (t, d) in self.players_boards_with_possible_moves(player=self.current_player):
+            for (t, d) in self._players_boards_with_possible_moves(player=self.current_player):
                 board = self.get_board(global_td_idx=(t, d))
                 for (i, j) in board.pieces_of(self.player_at(t)):
                     yield self.potential_flip_idx((t, d, i, j))
         else:
             local_idx, = move_prefix
             global_idx = self.potential_flip_idx(local_idx)
-            for end_idx in self.piece_possible_moves(global_idx=global_idx, castling=True):
+            for end_idx in self._piece_possible_moves(global_idx=global_idx, castling=True):
                 yield self.potential_flip_idx(end_idx)
 
     def valid_special_moves(self):
@@ -906,7 +906,7 @@ class Chess5d(SubsetGame):
     @property
     def observation(self):
         """
-        observation is shapes ((D1,...,DN),(D1,...,DN),(D1,...,DN),(D1,...,DN)), (D1,...,DN, N), T)
+        observation is shapes ((D1,...,D4),(D1,...,D4),(D1,...,D4),(D1,...,D4)), (D1,...,D4, 4), 0)
 
         the boards are
             (the pieces (including empty and blocked squares),
@@ -938,7 +938,7 @@ class Chess5d(SubsetGame):
             timeline = self.multiverse.get_timeline(dim_idx=dim_idx)
             # set the pieces of the boards in this timeline
             piece_board[timeline.start_idx:timeline.end_time() + 1, i, :, :] = timeline.get_board_as_idxs_stack()
-            if self.dim_is_active(dim_idx):
+            if self._dim_is_active(dim_idx):
                 # set this dimension to active if it is active
                 active_board[:, i, :, :] = 1
             # set the leaf to movable
@@ -949,7 +949,7 @@ class Chess5d(SubsetGame):
         # create index set
         T = torch.cat((
             torch.arange(time_len).view((time_len, 1, 1, 1, 1)),
-            torch.zeros((time_len, 1, 1, 3)),
+            torch.zeros((time_len, 1, 1, 1, 3)),
         ), dim=-1)
 
         dim_range = self.multiverse.get_range()
@@ -969,11 +969,11 @@ class Chess5d(SubsetGame):
             torch.zeros((1, 1, 1, ylen, 3)),
             torch.arange(ylen).view((1, 1, 1, ylen, 1)),
         ), dim=-1)
-        if self.current_player == P.P1:
-            # in this case we need to flip D and rotate the board
-            D = -D
-            X = -X
-            Y = -Y
+        #if self.current_player == P.P1:
+        #    # in this case we need to flip D and rotate the board
+        #    D = -D
+        #    X = xlen - 1 - X
+        #    Y = ylen - 1 - Y
         return (piece_board, active_board, movable_board, player_board), T + D + X + Y, torch.zeros(vec_shape)
 
     @staticmethod
@@ -1028,9 +1028,9 @@ class Chess5d(SubsetGame):
             global_move = local_move
         else:
             global_move = self._flip_move(local_move)
-        capture, terminal = out.mutate_make_move(global_move)
+        capture, terminal = out._mutate_make_move(global_move)
         if terminal:
-            out.term_ev = out.terminal_eval(mutation=False)
+            out.term_ev = out._terminal_eval(mutation=False)
         return out
 
     def is_terminal(self):
@@ -1065,159 +1065,10 @@ class Chess5d(SubsetGame):
         print(game.__str__())
 
 
-class Chess2d(Chess5d):
-    def __init__(self,
-                 initial_board=None,
-                 initial_timeline=None,
-                 current_player=P.P0,
-                 first_player=P.P0,
-                 check_validity=False,
-                 save_moves=True,
-                 term_ev=None,
-                 ):
-        super().__init__(initial_board=initial_board,
-                         initial_timeline=initial_timeline,
-                         current_player=current_player,
-                         first_player=first_player,
-                         check_validity=check_validity,
-                         save_moves=save_moves,
-                         term_ev=term_ev,
-                         )
-
-    def piece_possible_moves(self, global_idx, castling=True):
-        # only return moves that do not jump time-dimensions
-        for end_idx in super().piece_possible_moves(global_idx, castling=castling):
-            if end_idx[:2] == global_idx[:2]:
-                yield end_idx
-
-    def material_draw(self):
-        board = self.get_current_board()
-        if self.present_player_in_check():
-            # then it is not a draw
-            return False
-        for idx in board.all_pieces():
-            piece = board.get_piece(idx)
-            if P.piece_id(piece=piece) != P.KING:
-                return False
-        return True
-
-    def get_current_board(self):
-        return self.multiverse.get_board((self.multiverse.max_length - 1, 0))
-
-    def get_current_timeline(self):
-        return self.multiverse.get_timeline(0)
-
-    def wrap_move(self, move, td_idx=None):
-        if td_idx is None:
-            td_idx = (self.multiverse.max_length - 1, 0)
-        idx, end_idx = move
-        return td_idx + idx, td_idx + end_idx
-
-    def make_move(self, local_move):
-        out = self.clone()
-        local_move = self.wrap_move(local_move)
-        if self.current_player == P.P0:
-            global_move = local_move
-        else:
-            global_move = self._flip_move(local_move)
-        capture, terminal = out.mutate_make_move(global_move)
-        if terminal:
-            out.term_ev = out.terminal_eval(mutation=False)
-        out.mutate_make_move(Chess5d.END_TURN)
-        out.prune_timeline()
-        return out
-
-    def potential_flip_idx(self, idx):
-        if self.current_player == P.P0:
-            return idx
-        else:
-            (i, j) = idx
-            I, J = Board.BOARD_SHAPE
-            return (I - i - 1, J - j - 1)
-
-    def get_valid_next_selections(self, move_prefix=()):
-        """
-        gets valid choices for next index to select
-            MUST BE DETERMINISTIC
-            moves must always be returned in the same order
-        Args:
-            move_prefix: indices selected so far, must be less than self.subsetsize
-        Returns:
-            iterable of N tuples indicating which additions are valid
-        """
-        if move_prefix == ():
-            board = self.get_current_board()
-            for (i, j) in board.pieces_of(self.current_player):
-                yield self.potential_flip_idx((i, j))
-        else:
-            local_idx, = move_prefix
-            global_idx = (self.multiverse.max_length - 1, 0) + self.potential_flip_idx(local_idx)
-            for end_idx in self.piece_possible_moves(global_idx=global_idx, castling=True):
-                yield self.potential_flip_idx(end_idx[2:])
-
-    def valid_special_moves(self):
-        """
-        returns iterable of special moves possible from current position
-        MUST BE DETERMINISTIC, always return moves in same order
-        Returns: boolean
-        """
-        return iter(())
-
-    def flipped(self):
-        out = Chess2d(
-            initial_timeline=self.get_current_timeline().flipped(),
-            current_player=P.flip_player(self.current_player),
-            first_player=P.flip_player(self.first_player),
-            check_validity=self.check_validity,
-            save_moves=self.save_moves,
-            term_ev=self.term_ev,
-        )
-        out.turn_history = [[(Chess5d._flip_move(move), [-dim for dim in dims_spawned])
-                             for (move, dims_spawned) in turn]
-                            for turn in self.turn_history]
-        return out
-
-    def clone(self):
-        game = Chess2d(initial_timeline=self.get_current_timeline().clone(),
-                       check_validity=self.check_validity,
-                       save_moves=self.save_moves,
-                       current_player=self.current_player,
-                       first_player=self.first_player,
-                       term_ev=self.term_ev,
-                       )
-        game.turn_history = copy.deepcopy(self.turn_history)
-        game.prune_history()
-        return game
-
-    def prune_timeline(self):
-        return
-        range = self.get_current_timeline().get_time_range()
-        if range[1] - range[0] > 3:
-            board_list = self.get_current_timeline().board_list
-            start_idx = range[1] - 3
-            self.multiverse = Multiverse(
-                main_timeline=Timeline(
-                    board_list=board_list[-3:],
-                    start_idx=start_idx,
-                )
-            )
-
-    def render(self):
-        if self.current_player == P.P1:
-            game = self.flipped()
-        else:
-            game = self
-        print(game.get_current_board().__str__())
-
-
 if __name__ == '__main__':
     from aleph0.algs import Human, play_game
 
     # TODO: check termination eval
-    chess = Chess2d()
-    print(play_game(chess, [Human(), Human()], save_histories=False))
-    quit()
-
     chess = Chess5d()
     chess = chess.make_move(((0, 0, 1, 4), (0, 0, 3, 4)))
     chess = chess.make_move(next(chess.get_all_valid_moves()))
@@ -1231,7 +1082,6 @@ if __name__ == '__main__':
     chess = chess.make_move(((4, 0, 4, 7), (4, 0, 7, 4)))
     chess.render()
     print(chess.is_terminal())
-    print(chess.terminal_eval())
     chess.undo_turn()
     chess.render()
     quit()
