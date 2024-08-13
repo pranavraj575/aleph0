@@ -1,5 +1,5 @@
-from timeline import Timeline
-from board import Board
+from aleph0.examples.chess.game.timeline import Timeline
+from aleph0.examples.chess.game.board import Board
 
 
 class Multiverse:

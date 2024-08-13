@@ -43,10 +43,10 @@ class DQNFFN(nn.Module):
              underlying_set_size,
              piece_embedding,
              piece_embedding_dim) in zip(
-                                         underlying_set_shapes,
-                                         underlying_set_sizes,
-                                         piece_embeddings,
-                                         piece_embedding_dims):
+            underlying_set_shapes,
+            underlying_set_sizes,
+            piece_embeddings,
+            piece_embedding_dims):
             if piece_embedding is not None:
                 board_embedders.append(piece_embedding)
             else:
@@ -59,14 +59,14 @@ class DQNFFN(nn.Module):
 
         self.boardsetemb = BoardSetEmbedder(embedding_dim=overall_piece_embedding_dim,
                                             board_embedding_list=board_embedders)
-        self.flatten_board=nn.Flatten()
+        self.flatten_board = nn.Flatten()
         self.action_embed = nn.Embedding(num_embeddings=num_actions,
                                          embedding_dim=action_embedding_dim,
                                          )
         self.ffn = FFN(output_dim=output_dim,
                        hidden_layers=hidden_layers,
                        input_dim=total_board_dim*overall_piece_embedding_dim +
-                                 list(input_vec_size)[0] +
+                                 input_vec_size[0] +
                                  action_embedding_dim,
                        )
 
@@ -77,7 +77,7 @@ class DQNFFN(nn.Module):
         """
         boards, _, vec = obs
         # size (N, total_board_dim*overall_piece_embedding_dim)
-        board_embedding=self.flatten_board(self.boardsetemb.forward(boards))
+        board_embedding = self.flatten_board(self.boardsetemb.forward(boards))
 
         sa = torch.cat((board_embedding, vec, self.action_embed(action)), dim=1)
         output = self.ffn.forward(sa)

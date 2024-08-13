@@ -1,5 +1,5 @@
 import torch
-from board import Board
+from aleph0.examples.chess.game.board import Board
 
 
 class Timeline:

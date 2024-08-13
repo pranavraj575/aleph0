@@ -2,10 +2,10 @@ import copy, itertools, torch
 import numpy as np
 
 from aleph0.game import SelectionGame
-from multiverse import Multiverse
-from timeline import Timeline
-from board import Board
-from piece import P
+from aleph0.examples.chess.game.multiverse import Multiverse
+from aleph0.examples.chess.game.timeline import Timeline
+from aleph0.examples.chess.game.board import Board
+from aleph0.examples.chess.game.piece import P
 
 
 class Chess5d(SelectionGame):
@@ -870,7 +870,7 @@ class Chess5d(SelectionGame):
         dimensions = 1 + overall_range[1] - overall_range[0]
         I, J = Board.BOARD_SHAPE
 
-        return tuple((time_len, dimensions, I, J) for _ in range(4)), (time_len, dimensions, I, J, 4), 0
+        return tuple((time_len, dimensions, I, J) for _ in range(4)), (time_len, dimensions, I, J, 4), (0,)
 
     def get_valid_next_selections(self, move_prefix=()):
         """
@@ -969,7 +969,7 @@ class Chess5d(SelectionGame):
             torch.zeros((1, 1, 1, ylen, 3)),
             torch.arange(ylen).view((1, 1, 1, ylen, 1)),
         ), dim=-1)
-        #if self.current_player == P.P1:
+        # if self.current_player == P.P1:
         #    # in this case we need to flip D and rotate the board
         #    D = -D
         #    X = xlen - 1 - X

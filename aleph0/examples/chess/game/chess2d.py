@@ -1,10 +1,10 @@
 import torch, copy
 
-from piece import P
-from board import Board
-from timeline import Timeline
-from multiverse import Multiverse
-from chess5d import Chess5d
+from aleph0.examples.chess.game.piece import P
+from aleph0.examples.chess.game.board import Board
+from aleph0.examples.chess.game.timeline import Timeline
+from aleph0.examples.chess.game.multiverse import Multiverse
+from aleph0.examples.chess.game.chess5d import Chess5d
 
 from aleph0.game import FixedSizeSelectionGame
 
@@ -150,9 +150,12 @@ class Chess2d(Chess5d, FixedSizeSelectionGame):
         else:
             global_move = self._flip_move(local_move)
         capture, terminal = out._mutate_make_move(global_move)
+
         if terminal:
             out.term_ev = out._terminal_eval(mutation=False)
-        out._mutate_make_move(Chess2d.END_TURN)
+        else:
+            # only do this if non terminal
+            out._mutate_make_move(Chess2d.END_TURN)
         out.prune_timeline()
         return out
 
@@ -162,7 +165,7 @@ class Chess2d(Chess5d, FixedSizeSelectionGame):
         observation is shapes ((D1,D2),), (D1,D2,2),0)
         this method returns those shapes
         """
-        return (Board.BOARD_SHAPE,), (Board.BOARD_SHAPE + (2,)), 0
+        return (Board.BOARD_SHAPE,), (Board.BOARD_SHAPE + (2,)), (0,)
 
     @property
     def observation_shape(self):

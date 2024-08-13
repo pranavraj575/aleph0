@@ -32,7 +32,6 @@ class Toe(FixedSizeSelectionGame):
         return (3,)
 
     def possible_move_cnt(self):
-        print('here',super().possible_move_cnt())
         return 9
 
     def index_to_move(self, idx):

@@ -1,9 +1,9 @@
-from piece import P
 import torch
 
+from aleph0.examples.chess.game.piece import P
 
 class Board:
-    BOARD_SIZE = 8
+    BOARD_SIZE = 5
     BOARD_SHAPE = (BOARD_SIZE, BOARD_SIZE)
     BOARD_SQUARES = BOARD_SHAPE[0]*BOARD_SHAPE[1]
 
