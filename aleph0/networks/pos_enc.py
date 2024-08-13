@@ -46,7 +46,7 @@ class PositionalEncodingLayer(nn.Module):
         pre_periodic = positions.unsqueeze(-1)*self.periods
         # full_encoding (batch_size, D1, ..., DN, N, embedding_dim)
         if self.odd_embedding:
-            # (batch_size, D1, ..., DN, N, 1), adds one to the encoding dim to fix oddness
+            # zero_shape is (batch_size, D1, ..., DN, N, 1), it adds one to the encoding dim to fix oddness
             zero_shape = list(pre_periodic.shape)
             zero_shape[-1] = 1
             full_encoding = torch.cat([torch.sin(pre_periodic),
@@ -58,7 +58,7 @@ class PositionalEncodingLayer(nn.Module):
             full_encoding = torch.cat([torch.sin(pre_periodic),
                                        torch.cos(pre_periodic),
                                        ], dim=-1)
-        # (batch_size, D1, ..., DN, embedding_dim)
+        # average out all the encodings, size (batch_size, D1, ..., DN, embedding_dim)
         pos_enc = torch.mean(full_encoding, dim=-2)
 
         return X + pos_enc

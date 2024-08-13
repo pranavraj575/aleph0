@@ -59,6 +59,7 @@ class SelectionGame:
     def get_valid_next_selections(self, move_prefix=()):
         """
         gets valid choices for next index to select
+            INDICES ARE INDICES INTO THE OBS ARRAY RETURNED
             MUST BE DETERMINISTIC
             moves must always be returned in the same order
         Args:
@@ -220,7 +221,7 @@ class SelectionGame:
     def clone(self):
         return self.from_representation(self.representation)
 
-    def get_all_valid_moves(self, move_prefix=(), check_special=True):
+    def valid_selection_moves(self, move_prefix=()):
         """
         gets all possible moves
         Args:
@@ -228,17 +229,28 @@ class SelectionGame:
         Returns:
             iterable of (self.subset_size tuples of N tuples)
         """
-        if check_special:
-            for move in self.valid_special_moves():
-                yield move
-
         if len(move_prefix) == self.selection_size:
             yield move_prefix
         else:
             for next_move in self.get_valid_next_selections(move_prefix=move_prefix):
                 new_prefix = move_prefix + (next_move,)
-                for valid_move in self.get_all_valid_moves(move_prefix=new_prefix, check_special=False):
+                for valid_move in self.valid_selection_moves(move_prefix=new_prefix):
                     yield valid_move
+
+    def get_all_valid_moves(self):
+        """
+        gets all possible moves
+        will always return self.valid_selection_moves()
+         then self.valid_special_moves()
+        Args:
+            move_prefix: moves selected so far,
+        Returns:
+            iterable of (self.subset_size tuples of N tuples)
+        """
+        for move in self.valid_selection_moves():
+            yield move
+        for move in self.valid_special_moves():
+            yield move
 
     def symmetries(self, policy_vector):
         """
@@ -407,6 +419,7 @@ class FixedSizeSelectionGame(SelectionGame):
             if self.index_to_move(i) == move:
                 return i
         return None
+
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
     # NOT REQUIRED TO IMPLEMENT (either extra, or current implementation works fine)        #
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
@@ -423,7 +436,6 @@ class FixedSizeSelectionGame(SelectionGame):
         board_squares = np.prod(pos_shape[:-1]).item()
 
         return board_squares**self.selection_size + len(self.special_moves)
-
 
     @property
     def observation_shape(self):

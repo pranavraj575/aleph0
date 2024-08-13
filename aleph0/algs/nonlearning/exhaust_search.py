@@ -67,11 +67,16 @@ class Exhasutive(Algorithm):
         values = dist.view((1, -1))@all_values
         return dist, values.flatten()
 
-    def get_policy_value(self, game: SelectionGame, moves=None):
+    def get_policy_value(self, game: SelectionGame, selection_moves=None, special_moves=None):
         """
         averages runs of self.minimax_search to get optimal policy approximation
             if self.iterations is 1, this is equivalent to self.minimax_search
         """
+        moves = ((list(selection_moves) if selection_moves is not None else []) +
+                 (list(special_moves) if special_moves is not None else []))
+        if not moves:
+            moves = None
+
         dist, values = self.minimax_search(game=game, moves=moves)
         for _ in range(self.iterations - 1):
             dp, vp = self.minimax_search(game=game, moves=moves)

@@ -7,17 +7,20 @@ class Algorithm:
     def __init__(self):
         self.info = dict()
 
-    def get_policy_value(self, game: SelectionGame, moves=None):
+    def get_policy_value(self, game: SelectionGame, selection_moves=None, special_moves=None):
         """
         gets the distribution of best moves from the state of game, as well as the value for each player
         requires that game is not at a terminal state
         Args:
             game: SubsetGame instance with K players
-            moves: list of valid moves to inspect (size N)
-                if None, uses game.get_all_valid_moves()
+            selection_moves: list of valid moves to inspect (size N)
+                if None, uses game.valid_selection_moves()
+            special_moves: list of special moves to inspect
+                if None, uses game.valid_special_moves()
         Returns:
             array of size N that determines the calculated probability of taking each move,
                 in order of moves given, or game.get_all_valid_moves()
+                concatenates the selection moves and special moves
             array of size K in game that determines each players expected payout
                 or None if not calculated
         """

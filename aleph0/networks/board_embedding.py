@@ -102,19 +102,25 @@ class BoardSetEmbedder(nn.Module):
     embeds a list of (M, D1, ..., DN, *) boards
     The * may be different for each board
 
-    uses board_embedding_list to embed each board, combines them, and does a final linear map to the desired input dim
+    uses board_embedding_list to embed each board, combines them,
+        maybe does a final linear map to the desired input dim
     """
 
-    def __init__(self, embedding_dim, board_embedding_list):
+    def __init__(self, board_embedding_list, final_embedding_dim=None):
         """
         Args:
-            embedding_dim: final embedding dim
             board_embedding_list: list of BoardEmbedder objects, same size as number of boards
+            final_embedding_dim: final embedding dim, if specified, does a final linear embedding from the concatenated board embeddings
         """
         super().__init__()
         self.board_embedders = nn.ModuleList(board_embedding_list)
-        cat_input = sum(board_embedder.embedding_dim for board_embedder in board_embedding_list)
-        self.linear = nn.Linear(in_features=cat_input, out_features=embedding_dim)
+        self.cat_input = sum(board_embedder.embedding_dim for board_embedder in board_embedding_list)
+        if final_embedding_dim:
+            self.embedding_dim = final_embedding_dim
+            self.final_embedding = nn.Linear(in_features=self.cat_input, out_features=final_embedding_dim)
+        else:
+            self.embedding_dim = self.cat_input
+            self.final_embedding = nn.Identity()
 
     def forward(self, boards):
         """
@@ -126,4 +132,4 @@ class BoardSetEmbedder(nn.Module):
         board_embeddings = [be.forward(board)
                             for be, board in zip(self.board_embedders, boards)]
         board_cat = torch.cat(board_embeddings, dim=-1)
-        return self.linear(board_cat)
+        return self.final_embedding(board_cat)

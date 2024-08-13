@@ -57,13 +57,17 @@ class Chess2d(Chess5d, FixedSizeSelectionGame):
         idx, end_idx = move
         return td_idx + idx, td_idx + end_idx
 
-    def potential_flip_idx(self, idx):
+    def convert_to_local_idx(self, global_idx):
         if self.current_player == P.P0:
-            return idx
+            return global_idx
         else:
-            (i, j) = idx
+            (i, j) = global_idx
             I, J = Board.BOARD_SHAPE
             return (I - i - 1, J - j - 1)
+
+    def convert_to_global_idx(self, local_idx):
+        # these functions are the same in this case, where we only care about range 0 to 8
+        return self.convert_to_local_idx(global_idx=local_idx)
 
     def flipped(self):
         out = Chess2d(
@@ -127,12 +131,12 @@ class Chess2d(Chess5d, FixedSizeSelectionGame):
         if move_prefix == ():
             board = self.get_current_board()
             for (i, j) in board.pieces_of(self.current_player):
-                yield self.potential_flip_idx((i, j))
+                yield self.convert_to_local_idx((i, j))
         else:
             local_idx, = move_prefix
-            global_idx = (self.multiverse.max_length - 1, 0) + self.potential_flip_idx(local_idx)
+            global_idx = (self.multiverse.max_length - 1, 0) + self.convert_to_local_idx(local_idx)
             for end_idx in self._piece_possible_moves(global_idx=global_idx, castling=True):
-                yield self.potential_flip_idx(end_idx[2:])
+                yield self.convert_to_local_idx(end_idx[2:])
 
     def valid_special_moves(self):
         """
@@ -144,11 +148,8 @@ class Chess2d(Chess5d, FixedSizeSelectionGame):
 
     def make_move(self, local_move):
         out = self.clone()
-        local_move = self.wrap_move(local_move)
-        if self.current_player == P.P0:
-            global_move = local_move
-        else:
-            global_move = self._flip_move(local_move)
+        global_move = self.convert_to_global_move(local_move)
+        global_move = self.wrap_move(global_move)
         capture, terminal = out._mutate_make_move(global_move)
 
         if terminal:

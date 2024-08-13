@@ -24,8 +24,14 @@ def play_game(game: SelectionGame, alg_list, n=1, save_histories=True):
         while not temp.is_terminal():
             player = temp.current_player
             alg = alg_list[player]
-            valid_moves = list(temp.get_all_valid_moves())
-            dist, _ = alg.get_policy_value(game=temp, moves=valid_moves)
+            selection_moves = list(temp.valid_selection_moves())
+            special_moves = list(temp.valid_special_moves())
+            valid_moves = selection_moves + special_moves
+            dist, _ = alg.get_policy_value(game=temp,
+                                           selection_moves=selection_moves,
+                                           special_moves=special_moves,
+                                           )
+
             move_idx = torch.multinomial(dist, 1).item()
             next_temp = temp.make_move(valid_moves[move_idx])
             if save_histories:

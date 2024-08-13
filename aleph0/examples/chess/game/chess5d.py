@@ -831,18 +831,47 @@ class Chess5d(SelectionGame):
         """
         return min(t for (t, d) in self.boards_with_possible_moves() if self._dim_is_active(d))
 
-    def potential_flip_idx(self, idx):
+    def convert_to_local_move(self, global_move):
+        if global_move == Chess5d.END_TURN:
+            return Chess5d.END_TURN
+        else:
+            return tuple(self.convert_to_local_idx(global_idx)
+                         for global_idx in global_move)
+
+    def convert_to_global_move(self, local_move):
+        if local_move == Chess5d.END_TURN:
+            return Chess5d.END_TURN
+        else:
+            return tuple(self.convert_to_global_idx(local_idx)
+                         for local_idx in local_move)
+
+    def convert_to_local_idx(self, global_idx):
         """
         flips index if player is black
         Args:
-            idx: index to flip
+            global_idx: index to flip
         """
+        (t, d, i, j) = global_idx
+        overall_range = self.multiverse.get_range()
         if self.current_player == P.P0:
-            return idx
+            return (t, d - overall_range[0], i, j)
         else:
-            (t, d, i, j) = idx
             I, J = Board.BOARD_SHAPE
-            return (t, -d, I - i - 1, J - j - 1)
+            return (t, overall_range[1] - d, I - i - 1, J - j - 1)
+
+    def convert_to_global_idx(self, local_idx):
+        """
+        flips index if player is black
+        Args:
+            local_idx: index to flip
+        """
+        (t, d, i, j) = local_idx
+        overall_range = self.multiverse.get_range()
+        if self.current_player == P.P0:
+            return (t, d + overall_range[0], i, j)
+        else:
+            I, J = Board.BOARD_SHAPE
+            return (t, overall_range[1] - d, I - i - 1, J - j - 1)
 
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
     # CLASS METHODS                                                                         #
@@ -886,12 +915,12 @@ class Chess5d(SelectionGame):
             for (t, d) in self._players_boards_with_possible_moves(player=self.current_player):
                 board = self.get_board(global_td_idx=(t, d))
                 for (i, j) in board.pieces_of(self.player_at(t)):
-                    yield self.potential_flip_idx((t, d, i, j))
+                    yield self.convert_to_local_idx((t, d, i, j))
         else:
             local_idx, = move_prefix
-            global_idx = self.potential_flip_idx(local_idx)
+            global_idx = self.convert_to_global_idx(local_idx)
             for end_idx in self._piece_possible_moves(global_idx=global_idx, castling=True):
-                yield self.potential_flip_idx(end_idx)
+                yield self.convert_to_local_idx(end_idx)
 
     def valid_special_moves(self):
         """
@@ -947,33 +976,38 @@ class Chess5d(SelectionGame):
         player_board = players.broadcast_to((time_len, dimensions, xlen, ylen))
 
         # create index set
+        dim_range = game.multiverse.get_range()
+        T, D, X, Y = (
+            (torch.arange(time_len),
+             torch.arange(dimensions),
+             torch.arange(xlen),
+             torch.arange(ylen))
+        )
+        # dim range is (bottom dim, top dim)
+        # the true dim index should start at bottom dim, so we need to add that on
+        D += dim_range[0]
+
+
         T = torch.cat((
-            torch.arange(time_len).view((time_len, 1, 1, 1, 1)),
+            T.view((time_len, 1, 1, 1, 1)),
             torch.zeros((time_len, 1, 1, 1, 3)),
         ), dim=-1)
 
-        dim_range = self.multiverse.get_range()
-        # dim range is (bottom dim, top dim)
-        # the true dim index should start at bottom dim, so we need to add that on
         D = torch.cat((
             torch.zeros((1, dimensions, 1, 1, 1)),
-            torch.arange(dimensions).view((1, dimensions, 1, 1, 1)) + dim_range[0],
+            D.view((1, dimensions, 1, 1, 1)),
             torch.zeros((1, dimensions, 1, 1, 2)),
         ), dim=-1)
         X = torch.cat((
             torch.zeros((1, 1, xlen, 1, 2)),
-            torch.arange(xlen).view((1, 1, xlen, 1, 1)),
+            X.view((1, 1, xlen, 1, 1)),
             torch.zeros((1, 1, xlen, 1, 1)),
         ), dim=-1)
         Y = torch.cat((
             torch.zeros((1, 1, 1, ylen, 3)),
-            torch.arange(ylen).view((1, 1, 1, ylen, 1)),
+            Y.view((1, 1, 1, ylen, 1)),
         ), dim=-1)
-        # if self.current_player == P.P1:
-        #    # in this case we need to flip D and rotate the board
-        #    D = -D
-        #    X = xlen - 1 - X
-        #    Y = ylen - 1 - Y
+
         return (piece_board, active_board, movable_board, player_board), T + D + X + Y, torch.zeros(vec_shape)
 
     @staticmethod
@@ -1024,10 +1058,7 @@ class Chess5d(SelectionGame):
 
     def make_move(self, local_move):
         out = self.clone()
-        if self.current_player == P.P0:
-            global_move = local_move
-        else:
-            global_move = self._flip_move(local_move)
+        global_move = self.convert_to_global_move(local_move)
         capture, terminal = out._mutate_make_move(global_move)
         if terminal:
             out.term_ev = out._terminal_eval(mutation=False)
@@ -1069,6 +1100,14 @@ if __name__ == '__main__':
     from aleph0.algs import Human, play_game
 
     # TODO: check termination eval
+    chess = Chess5d()
+    chess = chess.make_move(next(chess.get_all_valid_moves()))
+    chess = chess.make_move(next(chess.get_all_valid_moves()))
+    chess = chess.make_move(next(chess.get_all_valid_moves()))
+    chess = chess.make_move(next(chess.get_all_valid_moves()))
+    chess = chess.make_move(((2, 0, 2, 0), (0, 0, 4, 0)))
+    chess = chess.make_move(next(chess.get_all_valid_moves()))
+    print(play_game(game=chess, alg_list=[Human(), Human()]))
     chess = Chess5d()
     chess = chess.make_move(((0, 0, 1, 4), (0, 0, 3, 4)))
     chess = chess.make_move(next(chess.get_all_valid_moves()))

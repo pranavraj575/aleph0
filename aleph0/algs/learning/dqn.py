@@ -57,7 +57,7 @@ class DQNFFN(nn.Module):
                 else:
                     board_embedders.append(FlattenEmbedder(input_shape=underlying_set_shape))
 
-        self.boardsetemb = BoardSetEmbedder(embedding_dim=overall_piece_embedding_dim,
+        self.boardsetemb = BoardSetEmbedder(final_embedding_dim=overall_piece_embedding_dim,
                                             board_embedding_list=board_embedders)
         self.flatten_board = nn.Flatten()
         self.action_embed = nn.Embedding(num_embeddings=num_actions,
@@ -218,7 +218,7 @@ class DQNAlg(Algorithm):
         """
         while depth > 0 and not game.is_terminal():
             moves = list(game.get_all_valid_moves())
-            pol, val = self.get_policy_value(game, moves=moves)
+            pol, val = self.get_policy_value(game, selection_moves=moves)
             # add noise
             pol = (1 - epsilon)*pol + epsilon/len(pol)
             move = moves[torch.multinomial(pol, 1).item()]
@@ -265,7 +265,12 @@ class DQNAlg(Algorithm):
         values = self.get_q_values(game=game, moves=moves)
         return max([value for value in values], key=lambda v: v[game.current_player])
 
-    def get_policy_value(self, game: FixedSizeSelectionGame, moves=None):
+    def get_policy_value(self, game: FixedSizeSelectionGame, selection_moves=None, special_moves=None):
+        if selection_moves is None:
+            selection_moves = list(game.get_all_valid_moves())
+        if special_moves is None:
+            special_moves=list(game.valid_special_moves())
+        moves=selection_moves+special_moves
         move_values = self.get_q_values(game=game, moves=moves)
         pol = torch.softmax(move_values[:, game.current_player]*self.softmax_constant, dim=-1)
         values = torch.zeros(game.num_players)
