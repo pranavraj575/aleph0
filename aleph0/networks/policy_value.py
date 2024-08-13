@@ -69,8 +69,10 @@ class PolicyValue(nn.Module):
             # set selections by order
             for k, kth_idxs in enumerate(zip(*selection_moves)):
                 # kth_idxs is a list of n-dim indices of size len(selection_moves).
-                # we are setting the kth segment of selection to the board index indicated by
-                sel[:, k*self.embedding_dim:(k + 1)*self.embedding_dim] = embedding[m][kth_idxs]
+                # we are setting the kth segment of selection to the board index indicated by each element of kth idxs
+                # embedding[m].__getitem__(list(zip(*kth_idxs))) is roughly [embedding[m][idx] for idx in kth_idxs]
+                # thus, this is an array of size (num moves, embedding dim)
+                sel[:, k*self.embedding_dim:(k + 1)*self.embedding_dim] = embedding[m].__getitem__(list(zip(*kth_idxs)))
             selections.append(sel)
         # size (M, len(selection_moves), self.selection_size*self.embedding_dim)
         selections = torch.stack(selections, dim=0)
@@ -89,3 +91,20 @@ class PolicyValue(nn.Module):
         value = self.value_net.forward(cls_embedding)
 
         return policy, value
+
+
+if __name__ == '__main__':
+    from aleph0.examples.tictactoe import Toe
+
+    toe = Toe()
+    obs = toe.batch_obs[0][0].unsqueeze(-1)
+    cls_embed = torch.rand(1, 1)
+    pv = PolicyValue(embedding_dim=1,
+                     selection_size=toe.selection_size,
+                     num_special_moves=len(toe.special_moves),
+                     num_players=toe.num_players,
+                     )
+    print(pv.forward(embedding=obs,
+                     cls_embedding=cls_embed,
+                     selection_moves=toe.valid_selection_moves(),
+                     special_move_idxs=(),))
