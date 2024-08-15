@@ -5,6 +5,7 @@ treats input board (batch size, D1, ..., input_dim) as a 4d array, and convolves
 import torchConvNd
 import torch
 from torch import nn
+from aleph0.networks.collapse import Collapse
 
 
 class CisToTransPerm(nn.Module):
@@ -135,6 +136,7 @@ class CisArchitect(nn.Module):
                  num_residuals,
                  kernel,
                  middle_dim=None,
+                 collapse_hidden_layers=None,
                  ):
         """
         pastes a bunch of CNNs together
@@ -150,6 +152,10 @@ class CisArchitect(nn.Module):
         ])
         # this permutation is nessary for collapsing, as collapse keeps the last dimension
         self.perm2 = CisToTransPerm(num_dims=len(kernel))
+
+        self.collapse = Collapse(embedding_dim=embedding_dim,
+                                 hidden_layers=collapse_hidden_layers,
+                                 )
 
     def forward(self, X):
         """
@@ -167,26 +173,67 @@ class CisArchitect(nn.Module):
 
         # (batch size, D1, D2, ..., embedding dim)
         X = self.perm2(X)
-        return X, None
+        return X, self.collapse(X)
 
 
 if __name__ == '__main__':
+    # try teaching model to distinguaish its collapsed value from transformed random noise input
+    # this is considerably more difficult than the trans architect, as the collapsed value is simply a weighted sum
+    # of each other value
+
+    # roughly what the model learns seems to be to designate one trash input to set to 1
+    # this will be weighted as 1 and become the cls output
+    # the rest of the values will be the correct value for the out output
+
     embedding_dim = 16
+    out_dim = 1
     cis = CisArchitect(embedding_dim=embedding_dim,
                        num_residuals=2,
                        kernel=(3, 3, 3, 3),
                        )
-    test_out = torch.zeros(1)
+    test_out = None
+    cls_out = None
     optim = torch.optim.Adam(cis.parameters())
+    losses = []
+    out_values = []
+    cls_values = []
+    for i in range(4000):
+        overall_loss = torch.zeros(1)
+        overall_out = torch.zeros(1)
+        overall_cls = torch.zeros(1)
+        batch_size = 1
+        for _ in range(batch_size):
+            test = torch.rand((1, 1, 1, 1, 4, embedding_dim))
+            test_out, cls_out = cis(test)
+            # need to get around torch batch norm
+            crit = nn.MSELoss()
+            targ = torch.zeros_like(test_out)
+            loss = crit(test_out, targ)
 
-    for i in range(420):
-        test = torch.rand((1, 2, 2, 3, 4, embedding_dim))
-        test_out, cls_out = cis(test)
-        crit = nn.MSELoss()
-        loss = crit(test_out, torch.zeros_like(test_out))
-        loss.backward()
+            targ2 = torch.ones_like(cls_out)
+            crit2 = nn.MSELoss()
+            loss2 = crit2(cls_out, targ2)
+
+            overall_loss += (loss + loss2)/2
+            overall_cls += torch.mean(cls_out).detach()
+            overall_out += torch.mean(test_out).detach()
+        overall_loss = overall_loss/batch_size
+        overall_loss.backward()
+        losses.append(overall_loss.item()/batch_size)
+        cls_values.append(overall_cls.item()/batch_size)
+        out_values.append(overall_out.item()/batch_size)
+        print(i, end='\r')
         optim.step()
-        print(loss.item())
+    from matplotlib import pyplot as plt
 
-    print(test_out.shape)
-    #print(test_out)
+    plt.plot(losses)
+    plt.title('losses')
+    plt.show()
+    plt.plot(out_values, label='out values', color='purple')
+    plt.plot([0 for _ in range(len(out_values))], '--', label='out target', color='purple')
+    plt.plot(cls_values, label='cls values', color='red')
+    plt.plot([1 for _ in range(len(out_values))], '--', label='cls target', color='red')
+    plt.legend()
+    plt.show()
+    print(test_out)
+    print(cls_out)
