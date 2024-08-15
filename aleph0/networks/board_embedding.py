@@ -15,7 +15,13 @@ class BoardEmbedder(nn.Module):
         raise NotImplementedError
 
 
-class PieceEmbedder(BoardEmbedder):
+class DiscretePieceEnc(BoardEmbedder):
+    """
+    embeds boards of discrete pieces
+    """
+
+
+class PieceEmbedder(DiscretePieceEnc):
     """
     embeds boards of discrete pieces
     """
@@ -31,6 +37,23 @@ class PieceEmbedder(BoardEmbedder):
         Returns: (M, D1, ..., DN, E)
         """
         return self.embedder(board)
+
+
+class OneHotEmbedder(DiscretePieceEnc):
+    """
+    embeds boards of discrete pieces as one-hot vectors
+    """
+
+    def __init__(self, piece_count):
+        super().__init__(embedding_dim=piece_count)
+
+    def forward(self, board):
+        """
+        Args:
+            board: (M, D1, ..., DN, *)
+        Returns: (M, D1, ..., DN, E)
+        """
+        torch.nn.functional.one_hot(board, num_classes=self.embedding_dim)
 
 
 class LinearEmbedder(BoardEmbedder):
@@ -133,3 +156,39 @@ class BoardSetEmbedder(nn.Module):
                             for be, board in zip(self.board_embedders, boards)]
         board_cat = torch.cat(board_embeddings, dim=-1)
         return self.final_embedding(board_cat)
+
+
+class AutoBoardSetEmbedder(BoardSetEmbedder):
+    """
+    automatically makes a board set embedder given the observation piece shapes
+    """
+
+    def __init__(self,
+                 underlying_set_shapes,
+                 underlying_set_sizes=None,
+                 default_embedding_dim=256,
+                 board_embedding_list=None,
+                 ):
+        """
+        Args:
+            underlying_set_shapes: shapes of underlying sets of each board
+            underlying_set_sizes: sizes of each underylying set, if discreete (i.e. shape ())
+            board_embedding_list: board embedding list, if any defined
+                i.e. array of Nones will create default board embeddings
+        """
+        if board_embedding_list is None:
+            board_embedding_list = [None for _ in underlying_set_shapes]
+        board_embedding_list = list(board_embedding_list)
+        if underlying_set_sizes is None:
+            underlying_set_sizes = [None for _ in underlying_set_shapes]
+        for i, (underlying_set_shape, underlying_set_size) in enumerate(
+                zip(underlying_set_shapes, underlying_set_sizes)):
+            if board_embedding_list[i] is None:
+                if underlying_set_shape == ():
+                    assert isinstance(underlying_set_size, int)
+                    board_embedding_list[i] = PieceEmbedder(embedding_dim=default_embedding_dim,
+                                                            piece_count=underlying_set_size,
+                                                            )
+                else:
+                    board_embedding_list[i] = FlattenEmbedder(input_shape=underlying_set_shape)
+        super().__init__(board_embedding_list)
