@@ -7,6 +7,7 @@ from aleph0.networks.board_embedding import (BoardSetEmbedder,
                                              FlattenAndLinearEmbedder,
                                              PieceEmbedder,
                                              )
+from aleph0.networks.transformer import TransArchitect
 
 __all__ = [
     "FFN",
@@ -18,4 +19,5 @@ __all__ = [
     "FlattenEmbedder",
     "FlattenAndLinearEmbedder",
     "PieceEmbedder",
+    "TransArchitect"
 ]
