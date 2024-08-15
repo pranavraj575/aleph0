@@ -168,6 +168,7 @@ class AutoBoardSetEmbedder(BoardSetEmbedder):
                  underlying_set_sizes=None,
                  default_embedding_dim=256,
                  board_embedding_list=None,
+                 final_embedding_dim=None
                  ):
         """
         Args:
@@ -191,4 +192,6 @@ class AutoBoardSetEmbedder(BoardSetEmbedder):
                                                             )
                 else:
                     board_embedding_list[i] = FlattenEmbedder(input_shape=underlying_set_shape)
-        super().__init__(board_embedding_list)
+        super().__init__(board_embedding_list=board_embedding_list,
+                         final_embedding_dim=final_embedding_dim,
+                         )
