@@ -177,6 +177,8 @@ class CisArchitect(nn.Module):
 
 
 if __name__ == '__main__':
+    import itertools
+
     # try teaching model to distinguaish its collapsed value from transformed random noise input
     # this is considerably more difficult than the trans architect, as the collapsed value is simply a weighted sum
     # of each other value
@@ -191,9 +193,12 @@ if __name__ == '__main__':
                        num_residuals=2,
                        kernel=(3, 3, 3, 3),
                        )
+    # make it easier with this
+    end = nn.Linear(in_features=embedding_dim, out_features=out_dim)
+    # end = nn.Identity()
     test_out = None
     cls_out = None
-    optim = torch.optim.Adam(cis.parameters())
+    optim = torch.optim.Adam(itertools.chain(cis.parameters(), end.parameters()),lr=.0001)
     losses = []
     out_values = []
     cls_values = []
@@ -204,7 +209,8 @@ if __name__ == '__main__':
         batch_size = 1
         for _ in range(batch_size):
             test = torch.rand((1, 1, 1, 1, 4, embedding_dim))
-            test_out, cls_out = cis(test)
+            test_cis_out, cls_cis_out = cis(test)
+            test_out, cls_out = end(test_cis_out), end(cls_cis_out)
             # need to get around torch batch norm
             crit = nn.MSELoss()
             targ = torch.zeros_like(test_out)

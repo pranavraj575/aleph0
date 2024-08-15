@@ -3,7 +3,13 @@ import torch
 from aleph0.game.selection_game import SelectionGame
 
 
-def play_game(game: SelectionGame, alg_list, n=1, save_histories=True):
+def play_game(game: SelectionGame,
+              alg_list,
+              initial_moves=None,
+              n=1,
+              save_histories=True,
+              depth=float('inf'),
+              ):
     """
     plays n games starting from game state, using each alg in alg_list as player
     repeatedly samples moves from alg.get_policy_value
@@ -13,6 +19,7 @@ def play_game(game: SelectionGame, alg_list, n=1, save_histories=True):
         n: number of games to play
         save_histories: whether to return histories
             each history is a list of (game, action, next_game)
+        depth: max depth to evaluate game
     Returns:
         list of outcomes, list of histories if save_histories (otherwise None)
     """
@@ -21,11 +28,16 @@ def play_game(game: SelectionGame, alg_list, n=1, save_histories=True):
     for _ in range(n):
         temp = game.clone()
         history = []
-        while not temp.is_terminal():
+        pos_moves = initial_moves
+        while (depth > 0) and (not temp.is_terminal()):
             player = temp.current_player
             alg = alg_list[player]
             selection_moves = list(temp.valid_selection_moves())
             special_moves = list(temp.valid_special_moves())
+            if pos_moves is not None:
+                selection_moves = [move for move in selection_moves if move in pos_moves]
+                special_moves = [move for move in special_moves if move in pos_moves]
+                pos_moves = None
             valid_moves = selection_moves + special_moves
             dist, _ = alg.get_policy_value(game=temp,
                                            selection_moves=selection_moves,
@@ -37,7 +49,12 @@ def play_game(game: SelectionGame, alg_list, n=1, save_histories=True):
             if save_histories:
                 history.append((game, valid_moves[move_idx], next_temp))
             temp = next_temp
-        outcomes.append(temp.get_result())
+            depth -= 1
+        if temp.is_terminal():
+            outcomes.append(temp.get_result())
+        else:
+            # limited by depth
+            outcomes.append(None)
         if save_histories:
             histories.append(history)
     if save_histories:

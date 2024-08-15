@@ -2,6 +2,8 @@ import torch
 import numpy as np
 from aleph0.game import SelectionGame
 from aleph0.algs.algorithm import Algorithm
+from aleph0.algs.nonlearning import Randy
+from aleph0.algs.play_game import play_game
 
 
 class DummyNode:
@@ -29,14 +31,15 @@ class Node:
                  value_estimate=None,
                  ):
         """
-        save storage by not actually saving the whole game state
-
-        :param temp_game: game at this stage (this is not saved in the node)
-        :param player: player whose turn it is
-        :param move: which move we got from parent
-        :param parent: previous node
-        :param next_moves: iterable of playable moves by player from the state
-            ORDER MATTERS
+        Args:
+            move: which move we got from parent
+            terminal: whether node is terminal
+            next_moves: iterable of playable moves by player from the state
+                ORDER MATTERS
+            num_players: number of players
+            parent: previous node
+            exploration_constant: exploration constatn
+            value_estimate: estimate of value for each player (if None, can set later)
         """
         self.move = move
         self.parent = parent
@@ -78,9 +81,13 @@ class Node:
             return self.next_moves[max(self.unexplored_indices(), key=lambda idx: self.child_priors[idx])]
 
     def get_final_policy(self):
-        return torch.nn.Softmax(-1)(torch.tensor(self.child_Q())).flatten().detach().numpy()
+        # return torch.nn.Softmax(-1)(torch.tensor(self.child_Q())).flatten().detach().numpy()
         # Alphazero uses child number visits because apparently this is less prone to outliers
         return self.child_number_visits/np.sum(self.child_number_visits)
+
+    def get_final_values(self):
+        # weighted sum of Q values
+        return self.get_final_policy().reshape((1, -1))@self.child_Q()
 
     def select_leaf(self, game: SelectionGame):
         """
@@ -106,7 +113,7 @@ class Node:
         return child_priors
 
     def is_root(self):
-        return self.parent == None
+        return isinstance(self.parent, DummyNode)
 
     def is_terminal(self):
         return self.terminal
@@ -160,12 +167,14 @@ class Node:
 
 def UCT_search(game: SelectionGame, num_reads, policy_value_evaluator):
     """
-    :param game:
-    :param player:
-    :param num_reads:
-    :param policy_value_evaluator: (game, player, moves) -> (policy,value)
-        returns how good the game is for player, if player is the one whose move it is
-        moves is all possible moves at that point (if None, uses game.all_possible_moves(player))
+
+    Args:
+        game: game to evaluate
+        num_reads: number of times to start a search
+        policy_value_evaluator: (game, moves) -> (policy,value)
+            moves is all possible moves at that point (if None, uses all possible moves)
+    Returns:
+        final policy, final value
     """
     root_game = game
     next_moves = list(game.get_all_valid_moves())
@@ -185,36 +194,14 @@ def UCT_search(game: SelectionGame, num_reads, policy_value_evaluator):
         if leaf.is_terminal():
             leaf.backup(value_estimate=leaf.terminal_eval(temp_game=leaf_game))
         else:
-            policy, value_estimate = policy_value_evaluator(
+            policy, value_estimates = policy_value_evaluator(
                 game=leaf_game,
                 player=leaf.player,
                 moves=leaf.next_moves,
             )
             leaf.expand(child_priors=policy)
-            leaf.backup(value_estimate=value_estimate)
-    return root.next_moves[np.argmax(root.get_final_policy())], root
-
-
-def create_pvz_evaluator(policy_value_net, chess2d=False):
-    """
-    creates a function to evaluate the game for a given player
-    :param policy_value_net: (game encoding, moves) -> (policy, value)
-        only works for white
-    :return: (game, player, moves) -> (policy, value)
-        returns the evaluation and policy for player
-        policy is a np array, value is a scalar
-    """
-
-    def pvz(game: Chess5d, player, moves):
-        policy, value = evaluate_network(network=policy_value_net,
-                                         game=game,
-                                         player=player,
-                                         moves=moves,
-                                         chess2d=chess2d,
-                                         )
-        return policy.flatten().detach().numpy(), value.flatten().detach().item()
-
-    return pvz
+            leaf.backup(value_estimate=value_estimates)
+    return root.get_final_policy(), root.get_final_values()
 
 
 class MCTS(Algorithm):
@@ -223,81 +210,102 @@ class MCTS(Algorithm):
         would expect this does not go well
     """
 
-    def __init__(self, num_reads=1000, playout_agent=None, draw_moves=float('inf')):
+    def __init__(self, num_reads, evaluation_alg: Algorithm = None, depth=float('inf'), heuristic_eval=None):
         """
-        :param draw_moves: sent to the rollout agent
-            number of moves without capture before a draw is declared
+        Args:
+            num_reads: number of times to initialize a game
+            evaluation_alg: agent to use to search tree past leafs (or to cut short and evaluate leaf)
+            depth: number of moves to make before terminating
+            heuristic_eval: game -> values for each player
+                for acting on non-terminal games
+                probably should return a 'draw' of (.5,.5) or some other value estimate
         """
         super().__init__()
+        if evaluation_alg is None:
+            evaluation_alg = Randy()
         self.num_reads = num_reads
-        if playout_agent is None:
-            playout_agent = Randy()
-        self.playout_agent = playout_agent
-        self.draw_moves = draw_moves
+        self.evaluation_alg = evaluation_alg
+        self.depth = depth
+        self.heuristic_eval = heuristic_eval
 
-    def pick_move(self, game: Chess5d, player):
-        move, _ = UCT_search(game=game,
-                             player=player,
-                             num_reads=self.num_reads,
-                             policy_value_evaluator=self.policy_value_eval,
-                             )
-        return move
-
-    def policy_value_eval(self, game, player, moves):
+    def policy_value_eval(self, game: SelectionGame, trials=1, moves=None, permute=False):
         """
-        returns the value of a game for specified player
+        Args:
+            game:
+            moves:
+            permute: if False, moves is in the order game.valid_selection_moves(), game.valid_special_moves()
 
-        does this through random playout
+        Returns:
+
         """
-        policy = (99 + np.random.random(len(moves)))/100
-        outcome, game = game_outcome(
-            player=self.playout_agent,
-            opponent=self.playout_agent,
-            game=game,
-            first_player=player,
-            draw_moves=self.draw_moves,
-        )
-        if player == 1:
-            # flip the value in this case
-            outcome = -outcome
-        return policy, outcome
+        if moves is None:
+            moves = list(game.get_all_valid_moves())
+            selection_moves = list(game.valid_selection_moves())
+            special_moves = list(game.valid_selection_moves())
+            permute = False
+        else:
+            moves = list(moves)
+            selection_moves = [move for move in game.valid_selection_moves()
+                               if move in moves]
+            special_moves = [move for move in game.valid_special_moves()
+                             if move in moves]
+
+        temp_policy, values = self.evaluation_alg.get_policy_value(game=game,
+                                                                   selection_moves=selection_moves,
+                                                                   special_moves=special_moves,
+                                                                   )
+        if permute:
+            # need to do some reordering
+            output_pol_move_order = selection_moves + special_moves
+            policy = torch.zeros(len(moves))
+            # check what the correct position corresponding to moves[i] is
+            for i in range(len(moves)):
+                if moves[i] in output_pol_move_order:
+                    policy[i] = temp_policy[i]
+        else:
+            policy = temp_policy
+
+        if values is None:
+            values = torch.zeros(game.num_players)
+            for trial in range(trials):
+                outcomes, histories = play_game(game=game,
+                                                alg_list=[self.evaluation_alg for _ in range(game.num_players)],
+                                                n=1,
+                                                initial_moves=selection_moves + special_moves,
+                                                save_histories=True,
+                                                depth=self.depth,
+                                                )
+                outcome, history = outcomes[0], histories[0]
+                if outcome is None:
+                    _, _, final_game = history
+                    outcome = self.heuristic_eval(final_game)
+                values += torch.tensor(outcome, dtype=torch.float)
+            values = values/trials
+        return policy, values
+
+    def get_policy_value(self, game: SelectionGame, selection_moves=None, special_moves=None):
+        """
+        gets the distribution of best moves from the state of game, as well as the value for each player
+        requires that game is not at a terminal state
+        Args:
+            game: SubsetGame instance with K players
+            selection_moves: list of valid moves to inspect (size N)
+                if None, uses game.valid_selection_moves()
+            special_moves: list of special moves to inspect
+                if None, uses game.valid_special_moves()
+        Returns:
+            array of size N that determines the calculated probability of taking each move,
+                in order of moves given, or game.get_all_valid_moves()
+                concatenates the selection moves and special moves
+            array of size K in game that determines each players expected payout
+                or None if not calculated
+        """
+        policy, values = UCT_search(game=game,
+                                    num_reads=self.num_reads,
+                                    policy_value_evaluator=None,
+                                    )
+        return policy, values
 
 
 if __name__ == '__main__':
-    from src.chess5d import Board, Chess2d, BOARD_SIZE, QUEEN, as_player
-    from src.utilitites import seed_all
-
-    seed_all(1)
-
-    easy_game = Chess2d(
-        board=Board(pieces=[[as_player(KING, 0), as_player(QUEEN, 0)] + [EMPTY for _ in range(BOARD_SIZE - 2)]] +
-                           [[EMPTY for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE - 2)] +
-                           [[as_player(KING, 1)] + [EMPTY for _ in range(BOARD_SIZE - 1)]]
-                    ),
-        check_validity=True
-    )
-
-    agent = MCTSAgent(num_reads=128, draw_moves=50)
-    outcome, game = game_outcome(agent, agent, game=easy_game.clone(), draw_moves=50)
-    print(game.multiverse)
-    quit()
-    stalemate = Chess2d(
-        board=Board(pieces=[[as_player(KING, 1)] + [EMPTY for _ in range(BOARD_SIZE - 1)]] +
-                           [[EMPTY for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE - 4)] +
-                           [[EMPTY, as_player(QUEEN, 1)] + [EMPTY for _ in range(BOARD_SIZE - 2)]] +
-                           [[EMPTY for _ in range(BOARD_SIZE)]] +
-                           [[as_player(KING, 0)] + [EMPTY for _ in range(BOARD_SIZE - 1)]]
-                    ))
-
-    next_move, root = UCT_search(stalemate, player=0, num_reads=128, policy_value_evaluator=evaluator)
-    print(stalemate)
-    print(next_move)
-    root: Node
-    child = root.children[next_move].children[END_TURN]
-    child: Node
-    stalemate.make_move(next_move)
-    nexxxtmove = ((1, 0, 5, 1), (1, 0, 6, 0))
-    grandchild = child.children[nexxxtmove]
-    stalemate.make_move(nexxxtmove)
-    grandchild: Node
-    print(grandchild.terminal_eval(stalemate))
+    pass
