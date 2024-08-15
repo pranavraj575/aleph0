@@ -53,7 +53,7 @@ class OneHotEmbedder(DiscretePieceEnc):
             board: (M, D1, ..., DN, *)
         Returns: (M, D1, ..., DN, E)
         """
-        torch.nn.functional.one_hot(board, num_classes=self.embedding_dim)
+        return torch.nn.functional.one_hot(board, num_classes=self.embedding_dim).float()
 
 
 class LinearEmbedder(BoardEmbedder):
@@ -166,7 +166,10 @@ class AutoBoardSetEmbedder(BoardSetEmbedder):
     def __init__(self,
                  underlying_set_shapes,
                  underlying_set_sizes=None,
-                 default_embedding_dim=256,
+                 default_discrete_piece_classes=None,
+                 default_discrete_piece_args=None,
+                 default_vector_piece_classes=None,
+                 default_vector_piece_args=None,
                  board_embedding_list=None,
                  final_embedding_dim=None
                  ):
@@ -174,24 +177,134 @@ class AutoBoardSetEmbedder(BoardSetEmbedder):
         Args:
             underlying_set_shapes: shapes of underlying sets of each board
             underlying_set_sizes: sizes of each underylying set, if discreete (i.e. shape ())
+                used to create default one hot embeddings
             board_embedding_list: board embedding list, if any defined
                 i.e. array of Nones will create default board embeddings
+            default_discrete_piece_classes: list of classes to use to embed discrete pieces
+                (if None, uses 1-hot vectors)
+            default_discrete_piece_args: list of dict of args to use for each discrete piece class
+            default_vector_piece_classes: list of classes to use to embed vector pieces
+                (if None, flattens vectors and uses as is)
+            default_vector_piece_args: list of dict of args to use for each vector piece class
         """
+        req_len = len(underlying_set_shapes)
         if board_embedding_list is None:
-            board_embedding_list = [None for _ in underlying_set_shapes]
-        board_embedding_list = list(board_embedding_list)
+            board_embedding_list = [None for _ in range(req_len)]
+
+        if len(board_embedding_list) < req_len:
+            board_embedding_list.extend(
+                [None for _ in range(req_len - len(board_embedding_list))]
+            )
+
         if underlying_set_sizes is None:
-            underlying_set_sizes = [None for _ in underlying_set_shapes]
-        for i, (underlying_set_shape, underlying_set_size) in enumerate(
-                zip(underlying_set_shapes, underlying_set_sizes)):
+            underlying_set_sizes = [None for _ in range(req_len)]
+        if len(underlying_set_sizes) < req_len:
+            underlying_set_sizes.extend(
+                [None for _ in range(req_len - len(underlying_set_sizes))]
+            )
+
+        if default_discrete_piece_classes is None:
+            default_discrete_piece_classes = [None for _ in range(req_len)]
+        if len(default_discrete_piece_classes) < req_len:
+            default_discrete_piece_classes.extend(
+                [None for _ in range(req_len - len(default_discrete_piece_classes))]
+            )
+
+        if default_discrete_piece_args is None:
+            default_discrete_piece_args = [None for _ in range(req_len)]
+        if len(default_discrete_piece_args) < req_len:
+            default_discrete_piece_args.extend(
+                [None for _ in range(req_len - len(default_discrete_piece_args))]
+            )
+
+        if default_vector_piece_classes is None:
+            default_vector_piece_classes = [None for _ in range(req_len)]
+        if len(default_vector_piece_classes) < req_len:
+            default_vector_piece_classes.extend(
+                [None for _ in range(req_len - len(default_vector_piece_classes))]
+            )
+
+        if default_vector_piece_args is None:
+            default_vector_piece_args = [None for _ in range(req_len)]
+        if len(default_vector_piece_args) < req_len:
+            default_vector_piece_args.extend(
+                [None for _ in range(req_len - len(default_vector_piece_args))]
+            )
+
+        for i, (underlying_set_shape,
+                underlying_set_size,
+                DiscretePieceClass,
+                discrete_piece_kwargs,
+                VectorPieceClass,
+                vector_kwargs,
+                ) in enumerate(
+            zip(underlying_set_shapes,
+                underlying_set_sizes,
+                default_discrete_piece_classes,
+                default_discrete_piece_args,
+                default_vector_piece_classes,
+                default_vector_piece_args,
+                )):
             if board_embedding_list[i] is None:
                 if underlying_set_shape == ():
-                    assert isinstance(underlying_set_size, int)
-                    board_embedding_list[i] = PieceEmbedder(embedding_dim=default_embedding_dim,
-                                                            piece_count=underlying_set_size,
-                                                            )
+                    if DiscretePieceClass is None:
+                        assert isinstance(underlying_set_size,
+                                          int)  # need to specify this if using default discrete embeddings
+
+                        DiscretePieceClass = OneHotEmbedder
+                        discrete_piece_kwargs = {'piece_count': underlying_set_size}
+                    if discrete_piece_kwargs is None:
+                        discrete_piece_kwargs = dict()
+                    board_embedding_list[i] = DiscretePieceClass(**discrete_piece_kwargs)
                 else:
-                    board_embedding_list[i] = FlattenEmbedder(input_shape=underlying_set_shape)
+                    if VectorPieceClass is None:
+                        VectorPieceClass = FlattenEmbedder
+                        vector_kwargs = {'input_shape': underlying_set_shape}
+                    if vector_kwargs is None:
+                        vector_kwargs = dict()
+                    board_embedding_list[i] = VectorPieceClass(**vector_kwargs)
         super().__init__(board_embedding_list=board_embedding_list,
                          final_embedding_dim=final_embedding_dim,
                          )
+
+
+if __name__ == '__main__':
+    from aleph0.examples.chess import Chess5d
+    from aleph0.examples.chess.game import P
+
+    game = Chess5d()
+    for _ in range(10):
+        game = game.make_move(next(game.get_all_valid_moves()))
+    print(game.observation_shape)
+    embedder0 = AutoBoardSetEmbedder(underlying_set_shapes=game.get_underlying_set_shapes(),
+                                     underlying_set_sizes=game.underlying_set_sizes(),
+                                     )
+    boards, _, _ = game.batch_obs
+    # embedding_dim should be sum of all possible pieces
+    # (total pieces + blocked piece) + 3 boolean variables
+    print('predicted embedding dim', (P.TOTAL_PIECES + 1) + 2 + 2 + 2)
+    print(embedder0.forward(boards).shape)
+    print()
+
+    embedder2 = AutoBoardSetEmbedder(
+        underlying_set_shapes=game.get_underlying_set_shapes(),
+        default_discrete_piece_classes=[PieceEmbedder for _ in range(len(game.get_underlying_set_shapes()))],
+        default_discrete_piece_args=[{'embedding_dim': 69,
+                                      'piece_count': P.TOTAL_PIECES + 1}
+                                     ] + [{'embedding_dim': 69,
+                                           'piece_count': 2}]*3
+    )
+
+    print('predicted embedding dim', 69*4)
+    print(embedder2.forward(boards).shape)
+    print()
+
+    embedder3 = AutoBoardSetEmbedder(underlying_set_shapes=game.get_underlying_set_shapes(),
+                                     underlying_set_sizes=game.underlying_set_sizes(),
+                                     final_embedding_dim=69,
+                                     )
+    boards, _, _ = game.batch_obs
+    # embedding_dim should be sum of all possible pieces
+    # (total pieces + blocked piece) + 3 boolean variables
+    print('predicted embedding dim', 69)
+    print(embedder3.forward(boards).shape)
