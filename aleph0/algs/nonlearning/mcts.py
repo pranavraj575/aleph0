@@ -11,8 +11,8 @@ class DummyNode:
 
     def __init__(self, num_players):
         self.parent = None
-        self.child_total_value = np.zeros(1)
-        self.child_number_visits = np.zeros(1)
+        self.child_total_value = np.zeros((1, num_players))
+        self.child_number_visits = np.zeros((1, 1))
         self.next_moves = [DummyNode.DUMMY_MOVE]
         self.move_idx = {DummyNode.DUMMY_MOVE: 0}
         self.dumb = True
@@ -26,6 +26,7 @@ class Node:
                  terminal,
                  next_moves,
                  num_players,
+                 current_player,
                  parent=None,
                  exploration_constant=1.,
                  value_estimate=None,
@@ -52,13 +53,14 @@ class Node:
         self.next_moves = list(next_moves)
         self.move_idx = {next_move: i for i, next_move in enumerate(self.next_moves)}
 
-        self.child_priors = np.ones(len(next_moves))
+        self.child_priors = np.ones((len(next_moves), 1))
 
         # value estimate for self of taking each move
         self.child_total_value = np.zeros((len(next_moves), num_players))
-        self.child_number_visits = np.zeros(len(next_moves))
+        self.child_number_visits = np.zeros((len(next_moves), 1))
         self.exp_constant = exploration_constant
         self.num_players = num_players
+        self.current_player = current_player
 
     def number_visits(self):
         return self.parent.child_number_visits[self.parent.move_idx[self.move]]
@@ -73,7 +75,8 @@ class Node:
         return np.where(self.child_number_visits == 0)[0]
 
     def pick_move(self):
-        bestmove = self.child_Q() + self.child_U()
+        # we want to check the q values only of current player when picking move
+        bestmove = self.child_Q()[:, (self.current_player,)] + self.child_U()
         if self.fully_expanded():
             return self.next_moves[np.argmax(bestmove)]
         else:
@@ -123,10 +126,10 @@ class Node:
 
     def expand(self, child_priors):
         self.is_expanded = True
-
         if self.is_root():  # add dirichlet noise to child_priors in root node
             child_priors = self.add_dirichlet_noise(child_priors=child_priors)
-        self.child_priors = child_priors
+
+        self.child_priors = child_priors.reshape((-1, 1))
 
     def maybe_add_child(self, game: SelectionGame, move):
         """
@@ -145,10 +148,11 @@ class Node:
                 num_players=self.num_players,
                 move=move,
                 terminal=terminal,
-                next_moves=list(game.get_all_valid_moves()),
+                next_moves=list(new_game.get_all_valid_moves()),
                 parent=self,
                 exploration_constant=1.,
                 value_estimate=value_estimate,
+                current_player=new_game.current_player,
             )
         return self.children[move], new_game, terminal
 
@@ -186,17 +190,17 @@ def UCT_search(game: SelectionGame, num_reads, policy_value_evaluator):
                 exploration_constant=1.,
                 # this should probably always be none
                 value_estimate=game.get_result() if game.is_terminal() else None,
+                current_player=game.current_player,
                 )
     if not next_moves:
         return None, root
     for i in range(num_reads):
         leaf, leaf_game = root.select_leaf(game=root_game.clone())
         if leaf.is_terminal():
-            leaf.backup(value_estimate=leaf.terminal_eval(temp_game=leaf_game))
+            leaf.backup(value_estimate=leaf_game.get_result())
         else:
             policy, value_estimates = policy_value_evaluator(
                 game=leaf_game,
-                player=leaf.player,
                 moves=leaf.next_moves,
             )
             leaf.expand(child_priors=policy)
@@ -210,7 +214,13 @@ class MCTS(Algorithm):
         would expect this does not go well
     """
 
-    def __init__(self, num_reads, evaluation_alg: Algorithm = None, depth=float('inf'), heuristic_eval=None):
+    def __init__(self,
+                 num_reads,
+                 evaluation_alg: Algorithm = None,
+                 depth=float('inf'),
+                 heuristic_eval=None,
+                 num_rollout_samples=1,
+                 ):
         """
         Args:
             num_reads: number of times to initialize a game
@@ -219,6 +229,7 @@ class MCTS(Algorithm):
             heuristic_eval: game -> values for each player
                 for acting on non-terminal games
                 probably should return a 'draw' of (.5,.5) or some other value estimate
+            num_rollout_samples: number of times to rollout from a leaf(if doing rollouts)
         """
         super().__init__()
         if evaluation_alg is None:
@@ -227,8 +238,14 @@ class MCTS(Algorithm):
         self.evaluation_alg = evaluation_alg
         self.depth = depth
         self.heuristic_eval = heuristic_eval
+        self.num_rollout_samples = num_rollout_samples
 
-    def policy_value_eval(self, game: SelectionGame, trials=1, moves=None, permute=False):
+    def policy_value_eval(self,
+                          game: SelectionGame,
+                          moves=None,
+                          trials=1,
+                          permute=False,
+                          ):
         """
         Args:
             game:
@@ -281,7 +298,7 @@ class MCTS(Algorithm):
                     outcome = self.heuristic_eval(final_game)
                 values += torch.tensor(outcome, dtype=torch.float)
             values = values/trials
-        return policy, values
+        return policy.numpy(), values.numpy()
 
     def get_policy_value(self, game: SelectionGame, selection_moves=None, special_moves=None):
         """
@@ -302,10 +319,27 @@ class MCTS(Algorithm):
         """
         policy, values = UCT_search(game=game,
                                     num_reads=self.num_reads,
-                                    policy_value_evaluator=None,
+                                    policy_value_evaluator=(
+                                        lambda game, moves:
+                                        self.policy_value_eval(game=game,
+                                                               moves=moves,
+                                                               trials=self.num_rollout_samples,
+                                                               )
+                                    ),
                                     )
         return policy, values
 
 
 if __name__ == '__main__':
-    pass
+    from aleph0.examples.tictactoe import Toe
+
+    game = Toe()
+    game = game.make_move(next(game.get_all_valid_moves()))
+    game = game.make_move(next(game.get_all_valid_moves()))
+    game = game.make_move(next(game.get_all_valid_moves()))
+    game = game.make_move(((2,1),))
+    # there is one winning move for player 0, and the rest are losing
+    # MCTS should learn to only play the winning move
+    print(game)
+    alg = MCTS(num_reads=1000)
+    print(alg.get_policy_value(game=game))
