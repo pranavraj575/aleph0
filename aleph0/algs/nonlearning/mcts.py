@@ -1,35 +1,33 @@
 import torch
 import numpy as np
 from aleph0.game import SelectionGame
-from aleph0.algs.algorithm import Algorithm
-from aleph0.algs.nonlearning import Randy
-from aleph0.algs.play_game import play_game
+from aleph0.algs import Algorithm, Randy, play_game
 
 
 class DummyNode:
+    """
+    empty node, defined to make root node the same as other nodes
+    """
     DUMMY_MOVE = None
 
     def __init__(self, num_players):
-        self.parent = None
         self.child_total_value = np.zeros((1, num_players))
         self.child_number_visits = np.zeros((1, 1))
         self.next_moves = [DummyNode.DUMMY_MOVE]
         self.move_idx = {DummyNode.DUMMY_MOVE: 0}
         self.dumb = True
         self.num_players = num_players
-        self.terminal = False
 
 
 class Node:
     def __init__(self,
                  move,
+                 parent,
                  terminal,
                  next_moves,
                  num_players,
                  current_player,
-                 parent=None,
                  exploration_constant=1.,
-                 value_estimate=None,
                  ):
         """
         Args:
@@ -45,22 +43,23 @@ class Node:
         self.move = move
         self.parent = parent
         self.terminal = terminal
+        self.exp_constant = exploration_constant
+        self.num_players = num_players
+        self.current_player = current_player
+
         self.is_expanded = False
-        self.children = {}
+        self.children = dict()
         self.dumb = False  # not a dummy node
-        self.value_estimate = value_estimate
 
         self.next_moves = list(next_moves)
         self.move_idx = {next_move: i for i, next_move in enumerate(self.next_moves)}
 
-        self.child_priors = np.ones((len(next_moves), 1))
+        # probability distribution to choose next childs (set when node is expanded for the first time)
+        self.child_priors = None
 
-        # value estimate for self of taking each move
+        # running value estimate for self of taking each move
         self.child_total_value = np.zeros((len(next_moves), num_players))
         self.child_number_visits = np.zeros((len(next_moves), 1))
-        self.exp_constant = exploration_constant
-        self.num_players = num_players
-        self.current_player = current_player
 
     def number_visits(self):
         return self.parent.child_number_visits[self.parent.move_idx[self.move]]
@@ -80,17 +79,18 @@ class Node:
         if self.fully_expanded():
             return self.next_moves[np.argmax(bestmove)]
         else:
-            # in this case, max of the unexplored nodes
-            return self.next_moves[max(self.unexplored_indices(), key=lambda idx: self.child_priors[idx])]
+            # in this case, sample from the unexplored nodes
+            return self.next_moves[max(self.unexplored_indices(),
+                                       key=lambda idx: self.child_priors[idx])]
 
     def get_final_policy(self):
         # return torch.nn.Softmax(-1)(torch.tensor(self.child_Q())).flatten().detach().numpy()
         # Alphazero uses child number visits because apparently this is less prone to outliers
-        return self.child_number_visits/np.sum(self.child_number_visits)
+        return (self.child_number_visits/np.sum(self.child_number_visits)).flatten()
 
     def get_final_values(self):
         # weighted sum of Q values
-        return self.get_final_policy().reshape((1, -1))@self.child_Q()
+        return (self.get_final_policy().reshape((1, -1))@self.child_Q()).flatten()
 
     def select_leaf(self, game: SelectionGame):
         """
@@ -139,20 +139,16 @@ class Node:
             mutates game state
         """
         new_game = game.make_move(move)
-        value_estimate = None
         terminal = new_game.is_terminal()
-        if terminal:
-            value_estimate = np.array(new_game.get_result())
         if move not in self.children:
             self.children[move] = Node(
-                num_players=self.num_players,
                 move=move,
+                parent=self,
                 terminal=terminal,
                 next_moves=list(new_game.get_all_valid_moves()),
-                parent=self,
-                exploration_constant=1.,
-                value_estimate=value_estimate,
+                num_players=self.num_players,
                 current_player=new_game.current_player,
+                exploration_constant=1.,
             )
         return self.children[move], new_game, terminal
 
@@ -162,8 +158,6 @@ class Node:
         self.parent.child_total_value[idx] += value_estimate
 
     def backup(self, value_estimate: float):
-        if self.value_estimate is None:
-            self.value_estimate = value_estimate
         self.inc_total_value_and_visits(value_estimate=value_estimate)
         if not self.parent.dumb:
             self.parent.backup(value_estimate=value_estimate)
@@ -171,7 +165,6 @@ class Node:
 
 def UCT_search(game: SelectionGame, num_reads, policy_value_evaluator):
     """
-
     Args:
         game: game to evaluate
         num_reads: number of times to start a search
@@ -183,14 +176,12 @@ def UCT_search(game: SelectionGame, num_reads, policy_value_evaluator):
     root_game = game
     next_moves = list(game.get_all_valid_moves())
     root = Node(move=DummyNode.DUMMY_MOVE,
+                parent=DummyNode(num_players=game.num_players),
                 terminal=game.is_terminal(),
                 next_moves=next_moves,
                 num_players=game.num_players,
-                parent=DummyNode(num_players=game.num_players),
-                exploration_constant=1.,
-                # this should probably always be none
-                value_estimate=game.get_result() if game.is_terminal() else None,
                 current_player=game.current_player,
+                exploration_constant=1.,
                 )
     if not next_moves:
         return None, root
@@ -327,19 +318,22 @@ class MCTS(Algorithm):
                                                                )
                                     ),
                                     )
-        return policy, values
+        return torch.tensor(policy), torch.tensor(values)
 
 
 if __name__ == '__main__':
     from aleph0.examples.tictactoe import Toe
+    from aleph0.algs import Human
 
     game = Toe()
     game = game.make_move(next(game.get_all_valid_moves()))
     game = game.make_move(next(game.get_all_valid_moves()))
     game = game.make_move(next(game.get_all_valid_moves()))
-    game = game.make_move(((2,1),))
+    game = game.make_move(((2, 1),))
     # there is one winning move for player 0, and the rest are losing
     # MCTS should learn to only play the winning move
     print(game)
     alg = MCTS(num_reads=1000)
     print(alg.get_policy_value(game=game))
+
+    print(play_game(Toe(), [Human(), alg])[0])
