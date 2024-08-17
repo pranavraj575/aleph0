@@ -1,7 +1,9 @@
 import torch
 import numpy as np
 from aleph0.game import SelectionGame
-from aleph0.algs import Algorithm, Randy, play_game
+from aleph0.algs.algorithm import Algorithm
+from aleph0.algs.play_game import play_game
+from aleph0.algs.nonlearning import Randy
 
 
 class DummyNode:

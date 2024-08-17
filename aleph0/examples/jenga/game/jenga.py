@@ -11,12 +11,6 @@ from aleph0.game import SelectionGame
 TOLERANCE = 1e-10
 
 
-def point_in_hull(point, hull, tolerance=TOLERANCE):
-    return all(
-        (np.dot(eq[:-1], point) + eq[-1] <= tolerance)
-        for eq in hull.equations)
-
-
 def which_points_in_hull(points, hull, tolerance=TOLERANCE):
     """
     returns if points np array dim (N,2) are in hull
@@ -35,10 +29,6 @@ def which_points_in_hull(points, hull, tolerance=TOLERANCE):
 
     # returns which of them have all negative distances (i.e. within all the bounds)
     return dists <= tolerance
-
-
-def hull_score_from_vtxs(point, vtxs):
-    return hull_score(point, ConvexHull(vtxs))
 
 
 def hull_score(point, hull, tolerance=TOLERANCE):
@@ -174,33 +164,33 @@ class Block:
                 np.array_equal(self.block_dim, other.block_dim) and
                 self.density == other.density)
 
+    @staticmethod
+    def random_block(L, i, pos_std=0., angle_std=0.):
+        """
+        creates a randomly placed block at specified level and index
+        :param L: level of block in tower
+        :param i: index of block in level (increases +x for even levels, +y for odd levels)
+            0 is the furthest negative, 2 is the furthest positive
+        :param pos_std: std randomness of position
+        :param angle_std: std randomness of angle
+        :return: block object
+        """
 
-def random_block(L, i, pos_std=0., angle_std=0.):
-    """
-    creates a randomly placed block at specified level and index
-    :param L: level of block in tower
-    :param i: index of block in level (increases +x for even levels, +y for odd levels)
-        0 is the furthest negative, 2 is the furthest positive
-    :param pos_std: std randomness of position
-    :param angle_std: std randomness of angle
-    :return: block object
-    """
+        rot = (L%2)*np.pi/2  # rotate yaw if odd level
 
-    rot = (L%2)*np.pi/2  # rotate yaw if odd level
+        pos = np.zeros(3)
+        pos += (0, 0, (L + 0.5)*Block.STD_BLOCK_DIM[2])  # height of level + half the height of a block (since COM)
 
-    pos = np.zeros(3)
-    pos += (0, 0, (L + 0.5)*Block.STD_BLOCK_DIM[2])  # height of level + half the height of a block (since COM)
+        width = Block.STD_BLOCK_DIM[1]
+        if L%2:
+            pos += ((i - 1)*(width + Block.STD_BLOCK_SPACING), 0, 0)
+        else:
+            pos += (0, (i - 1)*(width + Block.STD_BLOCK_SPACING), 0)
 
-    width = Block.STD_BLOCK_DIM[1]
-    if L%2:
-        pos += ((i - 1)*(width + Block.STD_BLOCK_SPACING), 0, 0)
-    else:
-        pos += (0, (i - 1)*(width + Block.STD_BLOCK_SPACING), 0)
+        rot = rot + np.random.normal(0, angle_std)
+        pos = pos + (np.random.normal(0, pos_std), np.random.normal(0, pos_std), 0.)
 
-    rot = rot + np.random.normal(0, angle_std)
-    pos = pos + (np.random.normal(0, pos_std), np.random.normal(0, pos_std), 0.)
-
-    return Block(pos=pos, yaw=rot)
+        return Block(pos=pos, yaw=rot)
 
 
 class Jenga(SelectionGame):
@@ -216,7 +206,7 @@ class Jenga(SelectionGame):
 
     TOWER_DIAMETER = 2*Block.STD_BLOCK_SPACING + 3*Block.STD_BLOCK_DIM[1]  # theoretical size of a layer
 
-    INITIAL_SIZE = 5  # number of levels in initial tower
+    DEFAULT_INITIAL_SIZE = 5  # number of levels in initial tower
 
     def __init__(self,
                  num_players=2,
@@ -225,6 +215,7 @@ class Jenga(SelectionGame):
                  pos_std=.001,
                  angle_std=.003,
                  fallen=False,
+                 initial_size=DEFAULT_INITIAL_SIZE,
                  ):
         """
         :param block_info: list of block triples, represents each layer
@@ -241,8 +232,8 @@ class Jenga(SelectionGame):
         self.angle_std = angle_std
         if block_info is None:
             block_info = [
-                [random_block(L=level, i=i, pos_std=pos_std, angle_std=angle_std) for i in range(3)]
-                for level in range(Jenga.INITIAL_SIZE)
+                [Block.random_block(L=level, i=i, pos_std=pos_std, angle_std=angle_std) for i in range(3)]
+                for level in range(initial_size)
             ]
         self.block_info = block_info
 
@@ -410,20 +401,6 @@ class Jenga(SelectionGame):
 
     # FALLING/TERMINAL CHECKS
 
-    def falls_at_layer(self, L):
-        """
-        computes whether tower falls at layer L
-        :param L: layer of tower (must be < self.height-1)
-        :return: boolean of whether the tower above layer L has COM outside of the convex hull of layer L when projected to xy plane
-        """
-        com = self.COMs[L + 1][:2]  # COM ABOVE level, project to xy
-
-        hull = self.hulls[L]
-
-        # find_simplex returns 0 if point is inside simplex, and -1 if outside.
-        # return if it 'falls' i.e. if hull.find_simplex < 0
-        return not point_in_hull(com, hull)
-
     def log_prob_stable(self, scale=.001):
         """
         computes log of probability that tower is stable
@@ -482,16 +459,6 @@ class Jenga(SelectionGame):
         places = self.valid_place_blocks()
         return (removes, places)
 
-    def valid_selection_moves(self, move_prefix=()):
-        if move_prefix == ():
-            removes, places = self.valid_moves_product()
-            for remove in removes:
-                for place in places:
-                    yield (remove, place)
-        else:
-            for next_move in self.get_valid_next_selections(move_prefix=move_prefix):
-                yield move_prefix + (next_move,)
-
     # GAME MOVE METHODS (RETURNS MUTATED TOWER)
 
     def remove_block(self, remove):
@@ -525,13 +492,13 @@ class Jenga(SelectionGame):
         if blk_angle_std is None:
             blk_angle_std = self.angle_std
         if self.top_layer_filled():
-            new_block = random_block(L=self.height, i=i, pos_std=blk_pos_std, angle_std=blk_angle_std)
-            return Jenga(self.block_info + [[(new_block if eye == i else None) for eye in range(3)]],
+            new_block = Block.random_block(L=self.height, i=i, pos_std=blk_pos_std, angle_std=blk_angle_std)
+            return Jenga(block_info=self.block_info + [[(new_block if eye == i else None) for eye in range(3)]],
                          pos_std=self.pos_std,
                          angle_std=self.angle_std,
                          )
         else:
-            new_block = random_block(L=self.height - 1, i=i, pos_std=blk_pos_std, angle_std=blk_angle_std)
+            new_block = Block.random_block(L=self.height - 1, i=i, pos_std=blk_pos_std, angle_std=blk_angle_std)
             return Jenga(
                 block_info=[
                     [(new_block if eye == i and L == self.height - 1 else block) for (eye, block) in enumerate(level)]
@@ -549,12 +516,23 @@ class Jenga(SelectionGame):
         """
         removed = self.remove_block(remove)
         placed = removed.place_block(place)
+        placed.current_player = (self.current_player + 1)%self.num_players
 
         return placed, (removed.log_prob_stable() + placed.log_prob_stable())
 
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
     # ASS METHODS                                                                           #
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+    def valid_selection_moves(self, move_prefix=()):
+        if move_prefix == ():
+            removes, places = self.valid_moves_product()
+            for remove in removes:
+                for place in places:
+                    yield (remove, place)
+        else:
+            for next_move in self.get_valid_next_selections(move_prefix=move_prefix):
+                yield move_prefix + (next_move,)
 
     def get_valid_next_selections(self, move_prefix=()):
         """
@@ -672,7 +650,7 @@ class Jenga(SelectionGame):
         game = self.clone()
         remove, place = local_move
         result, log_prob_stable = game.play_move_log_probabilistic(remove=remove, place=place)
-        result.set_fallen(log_prob=log_prob_stable)
+        result.set_fallen(log_prob_stable=log_prob_stable)
         return result
 
     def is_terminal(self):
@@ -695,13 +673,14 @@ class Jenga(SelectionGame):
             in team games this can be changed to give teammates the same reward, and have the sum across teams be 1
         """
 
-        results = torch.ones(self.num_players)/(self.num_players - 1)
+        results = np.ones(self.num_players)/(self.num_players - 1)
         if self.fallen:
             # previous player knocked over tower, so they lose
             results[self.current_player - 1] = 0
         else:
             # current player has no moves, so they lose
             results[self.current_player] = 0
+
         return results
 
     def __eq__(self, other):
@@ -725,11 +704,33 @@ class Jenga(SelectionGame):
 
 
 if __name__ == "__main__":
-    b = random_block(1, 1, pos_std=0.)
+    from aleph0.algs.nonlearning.mcts import MCTS
+
+    b = Block.random_block(1, 1, pos_std=0.)
     t = Jenga(pos_std=0.001, angle_std=0.005)
+    print(t, t.is_terminal(), t.current_player)
+    t = t.make_move(((0, 0), (5, 0)))
+    print(t, t.is_terminal(), t.current_player)
+    t = t.make_move(((1, 0), (5, 1)))
+    print(t, t.is_terminal(), t.current_player)
+    t = t.make_move(((0, 1), (5, 2)))
+    print(t, t.is_terminal(), t.current_player)
+    print(t.get_result())
+
+    t = Jenga(pos_std=0.001, angle_std=0.005,initial_size=3)
+    t = t.make_move(((0, 0), (3, 2)))
+    # the bottom layer has two blocks remaining, MCTS should see that removing one is a really bad idea
+    # i.e. the moves starting with (0,1) should have very low probability
+    alg = MCTS(num_reads=100)
+    print(t)
+
+    policy,val=alg.get_policy_value(game=t)
+    for prob,mvoe in zip(policy,t.get_all_valid_moves()):
+        print(mvoe,prob.item())
+    print('value',val)
+    quit()
     from PIL import Image
 
     layer0 = t.image_of_layer(0, resolution=512).astype(np.uint8)
     img = Image.fromarray(layer0*255)
     img.show()
-
