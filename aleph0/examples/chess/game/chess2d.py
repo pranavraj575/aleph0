@@ -166,7 +166,7 @@ class Chess2d(Chess5d, FixedSizeSelectionGame):
         observation is shapes ((D1,D2),), (D1,D2,2),0)
         this method returns those shapes
         """
-        return (Board.BOARD_SHAPE,), (Board.BOARD_SHAPE + (2,)), (0,)
+        return (Board.BOARD_SHAPE,), (Board.BOARD_SHAPE + (2,)), 0
 
     @property
     def observation_shape(self):

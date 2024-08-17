@@ -1,6 +1,3 @@
-from aleph0.networks.ffn import FFN
-from aleph0.networks.architect.middle.collapse import Collapse
-
 from aleph0.networks.architect.architect import Architect
 
 from aleph0.networks.architect.beginning.input_embedding import InputEmbedding
@@ -27,9 +24,6 @@ from aleph0.networks.architect.middle.chainformer import ChainFormer
 from aleph0.networks.architect.end.policy_value import PolicyValue
 
 __all__ = [
-    "FFN",
-    "Collapse",
-
     'Architect',
 
     "InputEmbedding",

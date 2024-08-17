@@ -66,7 +66,7 @@ class DQNFFN(nn.Module):
         self.ffn = FFN(output_dim=output_dim,
                        hidden_layers=hidden_layers,
                        input_dim=total_board_dim*overall_piece_embedding_dim +
-                                 input_vec_size[0] +
+                                 input_vec_size +
                                  action_embedding_dim,
                        )
 
@@ -155,14 +155,16 @@ class DQNAlg(Algorithm):
         # however, current reward is 0 always
         target = self.gamma*result
 
-        # invert the permuation
-        # normally, the output of model assumes current player is player 0 (to make it easier)
-        # permutation_to_standard_pos encodes where the correct value of each player is
-        # i.e. true_values[:]=values[permutation_to_standard_pos]
-        # however, we want to learn permuted values
-        # thus, we invert this: fake_target[permutation_to_standard_pos]=target[:]
+        perm = game.permutation_to_standard_pos
+        if perm is not None:
+            # invert the permuation
+            # normally, the output of model assumes current player is player 0 (to make it easier)
+            # permutation_to_standard_pos encodes where the correct value of each player is
+            # i.e. true_values[:]=values[permutation_to_standard_pos]
+            # however, we want to learn permuted values
+            # thus, we invert this: fake_target[permutation_to_standard_pos]=target[:]
 
-        target[game.permutation_to_standard_pos] = target.clone()
+            target[perm] = target.clone()
 
         self.buffer.append((
             game.batch_obs,
@@ -247,12 +249,14 @@ class DQNAlg(Algorithm):
 
         values = self.dqn.forward(obs=(batch_boards, batch_pos, batch_vec),
                                   action=torch.tensor([game.move_to_idx(move) for move in moves]))
-        permuation = game.permutation_to_standard_pos
+        perm = game.permutation_to_standard_pos
+        if perm is not None:
+            # permute them
+            # values are fake values, assuming current player is player 0
+            # permutation_to_standard_pos encodes where each player was sent
+            values = values[:, perm]
 
-        # permute them
-        # values are fake values, assuming current player is player 0
-        # permutation_to_standard_pos encodes where each player was sent
-        return values[:, permuation]
+        return values
 
     def get_value(self, game: FixedSizeSelectionGame, moves=None):
         """
@@ -269,8 +273,8 @@ class DQNAlg(Algorithm):
         if selection_moves is None:
             selection_moves = list(game.get_all_valid_moves())
         if special_moves is None:
-            special_moves=list(game.valid_special_moves())
-        moves=selection_moves+special_moves
+            special_moves = list(game.valid_special_moves())
+        moves = selection_moves + special_moves
         move_values = self.get_q_values(game=game, moves=moves)
         pol = torch.softmax(move_values[:, game.current_player]*self.softmax_constant, dim=-1)
         values = torch.zeros(game.num_players)

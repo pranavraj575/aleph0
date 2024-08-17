@@ -877,6 +877,13 @@ class Chess5d(SelectionGame):
     # CLASS METHODS                                                                         #
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
+    @property
+    def permutation_to_standard_pos(self):
+        if self.current_player == P.P1:
+            return [1, 0]
+        else:
+            return [0, 1]
+
     def clone(self):
         game = Chess5d(initial_multiverse=self.multiverse.clone(),
                        first_player=self.first_player,
@@ -986,7 +993,6 @@ class Chess5d(SelectionGame):
         # dim range is (bottom dim, top dim)
         # the true dim index should start at bottom dim, so we need to add that on
         D += dim_range[0]
-
 
         T = torch.cat((
             T.view((time_len, 1, 1, 1, 1)),

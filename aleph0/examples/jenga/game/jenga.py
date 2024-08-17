@@ -524,6 +524,12 @@ class Jenga(SelectionGame):
     # ASS METHODS                                                                           #
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
+    @property
+    def permutation_to_standard_pos(self):
+        # permutation[current_player] should be 0, as the network should assume current player is 0
+        # every other player is in the same order
+        return [(i - self.current_player)%self.num_players for i in range(self.num_players)]
+
     def valid_selection_moves(self, move_prefix=()):
         if move_prefix == ():
             removes, places = self.valid_moves_product()
@@ -565,7 +571,7 @@ class Jenga(SelectionGame):
     @property
     def observation_shape(self):
         H = self.height + self.top_layer_filled()
-        return ((H, 3), (H, 3), (H, 3, Block.vector_size())), (H, 3, 2), (0,)
+        return ((H, 3), (H, 3), (H, 3, Block.vector_size())), (H, 3, 2), 0
 
     @property
     def observation(self):
@@ -717,17 +723,17 @@ if __name__ == "__main__":
     print(t, t.is_terminal(), t.current_player)
     print(t.get_result())
 
-    t = Jenga(pos_std=0.001, angle_std=0.005,initial_size=3)
+    t = Jenga(pos_std=0.001, angle_std=0.005, initial_size=3)
     t = t.make_move(((0, 0), (3, 2)))
     # the bottom layer has two blocks remaining, MCTS should see that removing one is a really bad idea
     # i.e. the moves starting with (0,1) should have very low probability
     alg = MCTS(num_reads=100)
     print(t)
 
-    policy,val=alg.get_policy_value(game=t)
-    for prob,mvoe in zip(policy,t.get_all_valid_moves()):
-        print(mvoe,prob.item())
-    print('value',val)
+    policy, val = alg.get_policy_value(game=t)
+    for prob, mvoe in zip(policy, t.get_all_valid_moves()):
+        print(mvoe, prob.item())
+    print('value', val)
     quit()
     from PIL import Image
 

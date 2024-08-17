@@ -1,3 +1,6 @@
+# MCTS
+# we pass around the valid moves because we want to avoid recalculating more than once per game
+
 import torch
 import numpy as np
 from aleph0.game import SelectionGame
@@ -26,7 +29,8 @@ class Node:
                  move,
                  parent,
                  terminal,
-                 next_moves,
+                 next_selection_moves,
+                 next_special_moves,
                  num_players,
                  current_player,
                  exploration_constant=1.,
@@ -52,16 +56,17 @@ class Node:
         self.is_expanded = False
         self.children = dict()
         self.dumb = False  # not a dummy node
-
-        self.next_moves = list(next_moves)
+        self.next_selection_moves = list(next_selection_moves)
+        self.next_special_moves = list(next_special_moves)
+        self.next_moves = self.next_selection_moves + self.next_special_moves
         self.move_idx = {next_move: i for i, next_move in enumerate(self.next_moves)}
 
         # probability distribution to choose next childs (set when node is expanded for the first time)
         self.child_priors = None
 
         # running value estimate for self of taking each move
-        self.child_total_value = np.zeros((len(next_moves), num_players))
-        self.child_number_visits = np.zeros((len(next_moves), 1))
+        self.child_total_value = np.zeros((len(self.next_moves), num_players))
+        self.child_number_visits = np.zeros((len(self.next_moves), 1))
 
     def number_visits(self):
         return self.parent.child_number_visits[self.parent.move_idx[self.move]]
@@ -73,7 +78,7 @@ class Node:
         # Allegedly this version is used in alphazero
         return self.exp_constant*np.sqrt(self.number_visits())*(self.child_priors/(1 + self.child_number_visits))
         # standard UCT exploration term (multiplied by child priors)
-        #return self.exp_constant*self.child_priors*np.sqrt(np.log(self.number_visits())/(1 + self.child_number_visits))
+        # return self.exp_constant*self.child_priors*np.sqrt(np.log(self.number_visits())/(1 + self.child_number_visits))
 
     def unexplored_indices(self):
         return np.where(self.child_number_visits == 0)[0]
@@ -146,11 +151,13 @@ class Node:
         new_game = game.make_move(move)
         terminal = new_game.is_terminal()
         if move not in self.children:
+            new_game: SelectionGame
             self.children[move] = Node(
                 move=move,
                 parent=self,
                 terminal=terminal,
-                next_moves=list(new_game.get_all_valid_moves()),
+                next_selection_moves=list(new_game.valid_selection_moves()),
+                next_special_moves=list(new_game.valid_special_moves()),
                 num_players=self.num_players,
                 current_player=new_game.current_player,
                 exploration_constant=1.,
@@ -173,17 +180,20 @@ def UCT_search(game: SelectionGame, num_reads, policy_value_evaluator):
     Args:
         game: game to evaluate
         num_reads: number of times to start a search
-        policy_value_evaluator: (game, moves) -> (policy,value)
+        policy_value_evaluator: (game, selection_moves, special_moves) -> (policy,value)
             moves is all possible moves at that point (if None, uses all possible moves)
+            NOTE THAT THIS MUST DEPERMUTE IF NECESSARY
+                must return true values as opposed to permuted values
+                look at permutation_to_standard_pos, where (true_value[i]=network_output_value[perm[i]])
     Returns:
-        final policy, final value
+        final policy, final value, root node (if into that)
     """
-    root_game = game
     next_moves = list(game.get_all_valid_moves())
     root = Node(move=DummyNode.DUMMY_MOVE,
                 parent=DummyNode(num_players=game.num_players),
                 terminal=game.is_terminal(),
-                next_moves=next_moves,
+                next_selection_moves=list(game.valid_selection_moves()),
+                next_special_moves=list(game.valid_special_moves()),
                 num_players=game.num_players,
                 current_player=game.current_player,
                 exploration_constant=1.,
@@ -191,17 +201,18 @@ def UCT_search(game: SelectionGame, num_reads, policy_value_evaluator):
     if not next_moves:
         return None, root
     for i in range(num_reads):
-        leaf, leaf_game = root.select_leaf(game=root_game.clone())
+        leaf, leaf_game = root.select_leaf(game=game)
         if leaf.is_terminal():
             leaf.backup(value_estimate=leaf_game.get_result())
         else:
             policy, value_estimates = policy_value_evaluator(
                 game=leaf_game,
-                moves=leaf.next_moves,
+                selection_moves=leaf.next_selection_moves,
+                special_moves=leaf.next_special_moves,
             )
             leaf.expand(child_priors=policy)
             leaf.backup(value_estimate=value_estimates)
-    return root.get_final_policy(), root.get_final_values()
+    return root.get_final_policy(), root.get_final_values(), root
 
 
 class MCTS(Algorithm):
@@ -238,45 +249,25 @@ class MCTS(Algorithm):
 
     def policy_value_eval_for_UCT(self,
                                   game: SelectionGame,
-                                  moves=None,
+                                  selection_moves,
+                                  special_moves,
                                   trials=1,
-                                  permute=False,
                                   ):
         """
         Args:
             game:
-            moves:
-            permute: if False, moves is in the order game.valid_selection_moves(), game.valid_special_moves()
-
         Returns:
 
         """
-        if moves is None:
-            moves = list(game.get_all_valid_moves())
+        if selection_moves is None:
             selection_moves = list(game.valid_selection_moves())
-            special_moves = list(game.valid_selection_moves())
-            permute = False
-        else:
-            moves = list(moves)
-            selection_moves = [move for move in game.valid_selection_moves()
-                               if move in moves]
-            special_moves = [move for move in game.valid_special_moves()
-                             if move in moves]
+        if special_moves is None:
+            special_moves = list(game.valid_special_moves())
 
-        temp_policy, values = self.evaluation_alg.get_policy_value(game=game,
-                                                                   selection_moves=selection_moves,
-                                                                   special_moves=special_moves,
-                                                                   )
-        if permute:
-            # need to do some reordering
-            output_pol_move_order = selection_moves + special_moves
-            policy = torch.zeros(len(moves))
-            # check what the correct position corresponding to moves[i] is
-            for i in range(len(moves)):
-                if moves[i] in output_pol_move_order:
-                    policy[i] = temp_policy[i]
-        else:
-            policy = temp_policy
+        policy, values = self.evaluation_alg.get_policy_value(game=game,
+                                                              selection_moves=selection_moves,
+                                                              special_moves=special_moves,
+                                                              )
 
         if values is None:
             values = torch.zeros(game.num_players)
@@ -313,16 +304,19 @@ class MCTS(Algorithm):
             array of size K in game that determines each players expected payout
                 or None if not calculated
         """
-        policy, values = UCT_search(game=game,
-                                    num_reads=self.num_reads,
-                                    policy_value_evaluator=(
-                                        lambda game, moves:
-                                        self.policy_value_eval_for_UCT(game=game,
-                                                                       moves=moves,
-                                                                       trials=self.num_rollout_samples,
-                                                                       )
-                                    ),
-                                    )
+        policy, values, _ = UCT_search(
+            game=game,
+            num_reads=self.num_reads,
+            policy_value_evaluator=(
+                lambda game, moves:
+                self.policy_value_eval_for_UCT(
+                    game=game,
+                    selection_moves=list(game.valid_selection_moves()),
+                    special_moves=list(game.valid_special_moves()),
+                    trials=self.num_rollout_samples,
+                )
+            ),
+        )
         return torch.tensor(policy), torch.tensor(values)
 
 

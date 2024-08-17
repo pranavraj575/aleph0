@@ -1,8 +1,9 @@
 import torch
 from torch import nn
 
+from aleph0.networks.architect.middle.former import Former
 
-class TransArchitect(nn.Module):
+class TransFormer(Former):
     """
     takse a board embedding (M, D1, ... DN, E) and collapses into a sequence
             (M, D1*...*DN, E)
@@ -68,11 +69,11 @@ if __name__ == '__main__':
 
     embedding_dim = 16
     out_dim = 1
-    trans = TransArchitect(embedding_dim=embedding_dim,
-                           nhead=2,
-                           dim_feedforward=128,
-                           num_layers=2,
-                           )
+    trans = TransFormer(embedding_dim=embedding_dim,
+                        nhead=2,
+                        dim_feedforward=128,
+                        num_layers=2,
+                        )
     # since transformers learn embeddings and not values, we will suppliment it with a simple linear map output
     end = nn.Linear(in_features=embedding_dim, out_features=out_dim)
     test_out = None

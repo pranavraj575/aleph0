@@ -13,7 +13,6 @@ class PolicyValue(nn.Module):
                  policy_hidden_layers=None,
                  value_hidden_layers=None,
                  special_hidden_layers=None,
-
                  ):
         """
         Args:

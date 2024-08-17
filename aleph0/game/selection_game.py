@@ -174,7 +174,7 @@ class SelectionGame:
     @property
     def permutation_to_standard_pos(self):
         """
-        return the permutation required to send values to 'normal' values
+        return the permutation required to send values to 'normal' values, or None if no perm
         this encodes where each player was sent
         i.e. if we look at the game from player i's perspective,
             permutation_to_standard_pos[i]=0
@@ -183,7 +183,7 @@ class SelectionGame:
             view the game as good for white
             in this case, we would want the permutation to be [1,0] so true_value[i]=output_value[perm[i]]
         """
-        return list(range(self.num_players))
+        return None
 
     @property
     def observation_shape(self):
@@ -192,7 +192,7 @@ class SelectionGame:
         this method returns those shapes
         """
         boards, pos, vec = self.observation
-        return tuple(b.shape for b in boards), pos.shape, vec.shape
+        return tuple(b.shape for b in boards), pos.shape, vec.shape.item()
 
     def get_obs_board_shape(self):
         """

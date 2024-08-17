@@ -5,7 +5,9 @@ treats input board (batch size, D1, ..., input_dim) as a 4d array, and convolves
 import torchConvNd
 import torch
 from torch import nn
-from aleph0.networks.collapse import Collapse
+
+from aleph0.networks.architect.middle.collapse import Collapse
+from aleph0.networks.architect.middle.former import Former
 
 
 class CisToTransPerm(nn.Module):
@@ -130,7 +132,7 @@ class ResBlock(nn.Module):
         return self.relu2(_X + X)
 
 
-class CisArchitect(nn.Module):
+class CisFormer(Former):
     def __init__(self,
                  embedding_dim,
                  num_residuals,
@@ -160,8 +162,10 @@ class CisArchitect(nn.Module):
     def forward(self, X):
         """
         note: batch size is kept for legacy, it will probably be 1
-        :param X: (batch size, D1, ..., Dk, embedding_dim)
-        :return: (batch size, M), (batch size, 1): a policy (probability distribution) and a value
+        Args:
+            X:  (batch size, D1, ..., Dk, embedding_dim)
+        Returns:
+            (batch size, D1, ..., Dk, embedding_dim), (batch size, embedding_dim)
         """
         # X is (batch size, D1, D2, ..., embedding_dim)
 
@@ -189,16 +193,16 @@ if __name__ == '__main__':
 
     embedding_dim = 16
     out_dim = 1
-    cis = CisArchitect(embedding_dim=embedding_dim,
-                       num_residuals=2,
-                       kernel=(3, 3, 3, 3),
-                       )
+    cis = CisFormer(embedding_dim=embedding_dim,
+                    num_residuals=2,
+                    kernel=(3, 3, 3, 3),
+                    )
     # make it easier with this
     end = nn.Linear(in_features=embedding_dim, out_features=out_dim)
     # end = nn.Identity()
     test_out = None
     cls_out = None
-    optim = torch.optim.Adam(itertools.chain(cis.parameters(), end.parameters()),lr=.0001)
+    optim = torch.optim.Adam(itertools.chain(cis.parameters(), end.parameters()), lr=.0001)
     losses = []
     out_values = []
     cls_values = []

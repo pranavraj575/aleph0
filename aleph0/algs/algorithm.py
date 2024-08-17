@@ -48,3 +48,9 @@ class Algorithm:
         f = open(os.path.join(save_dir, 'info.pkl'), 'rb')
         self.info.update(pickle.load(f))
         f.close()
+
+    def clear(self):
+        """
+        clears anything stored on disk
+        """
+        pass

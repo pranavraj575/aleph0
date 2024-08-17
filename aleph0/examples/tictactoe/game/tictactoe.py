@@ -25,7 +25,7 @@ class Toe(FixedSizeSelectionGame):
 
     @staticmethod
     def fixed_obs_shape():
-        return ((3, 3),), (3, 3, 2), (1,)
+        return ((3, 3),), (3, 3, 2), 1
 
     @staticmethod
     def underlying_set_sizes():

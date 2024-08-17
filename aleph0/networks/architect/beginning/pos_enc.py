@@ -2,8 +2,33 @@ import torch, math
 from torch import nn
 
 
-class PositionalEncodingLayer(nn.Module):
+class AbstractPositionalEncoding(nn.Module):
+    def __init__(self, embedding_dim):
+        super().__init__()
+        self.embedding_dim = embedding_dim
 
+    def forward(self, X, positions):
+        """
+        can also drop batch from all args
+        Args:
+            X: input, shape (batch_size, D1, ..., Dn, initial)
+            positions: indexes of each dimension, shape (batch_size, D1, ..., DN, N)
+        Returns:
+            shape (batch_size, D1, ..., Dn, self.embedding_dim) output
+        """
+        raise NotImplementedError
+
+
+class IdentityPosititonalEncoding(AbstractPositionalEncoding):
+    """
+    does nothing
+    """
+
+    def __init__(self, embedding_dim):
+        super().__init__(embedding_dim=embedding_dim)
+
+
+class ClassicPositionalEncoding(AbstractPositionalEncoding):
     def __init__(self, embedding_dim, sequence_dim, base_periods_pre_exp=None):
         """
 
@@ -16,8 +41,7 @@ class PositionalEncodingLayer(nn.Module):
                         1,1/2,1/4,...
                 by default uses -2*log(10000)/embedding_dim
         """
-        super().__init__()
-        self.embedding_dim = embedding_dim
+        super().__init__(embedding_dim=embedding_dim)
         self.N = sequence_dim
         if base_periods_pre_exp is None:
             base_periods_pre_exp = [-2*math.log(10000.)/embedding_dim for _ in range(self.N)]
@@ -33,10 +57,7 @@ class PositionalEncodingLayer(nn.Module):
 
     def forward(self, X, positions):
         """
-        X has shape (batch_size, D1, ..., Dn, initial dim)
-
-        The output will have shape (batch_size, D1, ..., DN, initial dim + self.additional_output)
-
+        X has shape (batch_size, D1, ..., Dn, embedding_dim)
         can also drop batch from all args
         Args:
             X: input, shape (batch_size, D1, ..., Dn, embedding_dim)
@@ -64,8 +85,8 @@ class PositionalEncodingLayer(nn.Module):
         return X + pos_enc
 
 
-class PositionalAppendingLayer(nn.Module):
-    def __init__(self, encoding_nums, base_periods_pre_exp=None):
+class PositionalAppendingLayer(AbstractPositionalEncoding):
+    def __init__(self, input_embedding_dim, encoding_nums, base_periods_pre_exp=None):
         """
 
         Args:
@@ -77,22 +98,17 @@ class PositionalAppendingLayer(nn.Module):
                     1,1/2,1/4,...
                 by default uses -log(10000)/encoding_num
         """
-        super().__init__()
+        super().__init__(embedding_dim = input_embedding_dim + 2*sum(self.encoding_nums))
         self.encoding_nums = encoding_nums
         if base_periods_pre_exp is None:
             base_periods_pre_exp = [-math.log(10000.)/encoding_num for encoding_num in encoding_nums]
         self.base_periods_pre_exp = base_periods_pre_exp
 
-    @property
-    def additional_output(self):
-        # does sin and cos for each encoding num
-        return 2*sum(self.encoding_nums)
-
     def forward(self, X, positions):
         """
         X has shape (batch_size, D1, ..., Dn, initial dim)
 
-        The output will have shape (batch_size, D1, ..., DN, initial_embedding + self.additional_output)
+        The output will have shape (batch_size, D1, ..., DN, initial_embedding + additional_output)
 
         can also drop batch from all args
         Args:
@@ -121,10 +137,12 @@ class PositionalAppendingLayer(nn.Module):
 
 
 if __name__ == '__main__':
-    appending_layer = PositionalAppendingLayer(encoding_nums=(3, 3, 3),
+    input_embedding_dim = 7
+    appending_layer = PositionalAppendingLayer(input_embedding_dim=input_embedding_dim,
+                                               encoding_nums=(3, 3, 3),
                                                base_periods_pre_exp=(-math.log(2), -math.log(2), -math.log(2))
                                                )
-    xyz = .69*torch.ones(1, 1, 3, 7)*0
+    xyz = .69*torch.ones(1, 1, 3, input_embedding_dim)
     x = torch.arange(xyz.shape[0]).reshape(-1, 1, 1)
     x = torch.stack([x, torch.zeros_like(x), torch.zeros_like(x)], dim=-1)
     y = torch.arange(xyz.shape[1]).reshape(1, -1, 1)
@@ -134,9 +152,9 @@ if __name__ == '__main__':
     print(appending_layer(xyz, x + y + z))
     print(torch.arccos(appending_layer(xyz, x + y + z)))
 
-    encoding_layer = PositionalEncodingLayer(embedding_dim=xyz.shape[-1],
-                                             sequence_dim=3,
-                                             base_periods_pre_exp=(-math.log(2), -math.log(2), -math.log(2))
-                                             )
+    encoding_layer = ClassicPositionalEncoding(embedding_dim=input_embedding_dim,
+                                               sequence_dim=3,
+                                               base_periods_pre_exp=(-math.log(2), -math.log(2), -math.log(2))
+                                               )
     print(encoding_layer(xyz, x + y + z))
     print(torch.arcsin(3*encoding_layer(xyz, x + y + z)))
