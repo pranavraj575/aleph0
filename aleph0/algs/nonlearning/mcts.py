@@ -68,7 +68,10 @@ class Node:
         return self.child_total_value/(1 + self.child_number_visits)
 
     def child_U(self):
+        # Allegedly this version is used in alphazero
         return self.exp_constant*np.sqrt(self.number_visits())*(self.child_priors/(1 + self.child_number_visits))
+        # standard UCT exploration term (multiplied by child priors)
+        #return self.exp_constant*self.child_priors*np.sqrt(np.log(self.number_visits())/(1 + self.child_number_visits))
 
     def unexplored_indices(self):
         return np.where(self.child_number_visits == 0)[0]
@@ -231,12 +234,12 @@ class MCTS(Algorithm):
         self.heuristic_eval = heuristic_eval
         self.num_rollout_samples = num_rollout_samples
 
-    def policy_value_eval(self,
-                          game: SelectionGame,
-                          moves=None,
-                          trials=1,
-                          permute=False,
-                          ):
+    def policy_value_eval_for_UCT(self,
+                                  game: SelectionGame,
+                                  moves=None,
+                                  trials=1,
+                                  permute=False,
+                                  ):
         """
         Args:
             game:
@@ -312,10 +315,10 @@ class MCTS(Algorithm):
                                     num_reads=self.num_reads,
                                     policy_value_evaluator=(
                                         lambda game, moves:
-                                        self.policy_value_eval(game=game,
-                                                               moves=moves,
-                                                               trials=self.num_rollout_samples,
-                                                               )
+                                        self.policy_value_eval_for_UCT(game=game,
+                                                                       moves=moves,
+                                                                       trials=self.num_rollout_samples,
+                                                                       )
                                     ),
                                     )
         return torch.tensor(policy), torch.tensor(values)
