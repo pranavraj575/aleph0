@@ -621,7 +621,7 @@ class Jenga(SelectionGame):
 
         should return clones of any internal variables
         """
-        return self.block_info, self.num_players, self.current_player, self.fallen
+        return copy.deepcopy(self.block_info), self.num_players, self.current_player, self.fallen
 
     @staticmethod
     def from_representation(representation):

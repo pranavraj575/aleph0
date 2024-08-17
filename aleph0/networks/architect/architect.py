@@ -1,7 +1,8 @@
 from torch import nn
 
-from aleph0.networks.architect.beginning.input_embedding import InputEmbedding
+from aleph0.networks.architect.beginning.input_embedding import InputEmbedding, AutoInputEmbedder
 from aleph0.networks.architect.middle.former import Former
+from aleph0.networks.architect.middle.transformer import TransFormer
 from aleph0.networks.architect.end.policy_value import PolicyValue
 
 
@@ -60,3 +61,71 @@ class Architect(nn.Module):
                                                           for move in special_moves],
                                        softmax=softmax,
                                        )
+
+
+class AutoArchitect(Architect):
+    def __init__(self,
+                 sequence_dim,
+                 selection_size,
+                 additional_vector_dim,
+                 special_moves,
+                 num_players,
+                 underlying_set_shapes,
+                 underlying_set_sizes=None,
+                 encoding_nums=None,
+                 base_periods_pre_exp=None,
+                 embedding_dim=256,
+                 dim_feedforward=1024,
+                 dropout=.1,
+                 nhead=4,
+                 num_layers=6,
+                 device=None,
+                 ):
+        """
+        Args:
+            sequence_dim: dim of sequences expected in input (i.e. an 8x8 board is associated with a 2d seq)
+            selection_size: number of indices to select
+            additional_vector_dim: dimension of additional vector to add
+            special_moves: all possible special moves in game
+            num_players: number of players in game
+            underlying_set_shapes: shapes of underlying sets of each board
+            underlying_set_sizes: sizes of each underylying set, if discreete (i.e. shape ())
+                used to create default one hot embeddings
+            encoding_nums: encoding nums to use in PositionalAppender
+                if unspecified, uses ClassicPositionalEncoding
+            base_periods_pre_exp: to be used in PositionalAppender
+            embedding_dim: embedding dim to use
+            nhead: number of heads in transformer
+            num_layers: number of layers in transformer
+            device: device to put stuff on
+        """
+        input_embedder = AutoInputEmbedder(embedding_dim=embedding_dim,
+                                           sequence_dim=sequence_dim,
+                                           underlying_set_shapes=underlying_set_shapes,
+                                           underlying_set_sizes=underlying_set_sizes,
+                                           additional_vector_dim=additional_vector_dim,
+                                           final_embedding_dim=embedding_dim,
+                                           encoding_nums=encoding_nums,
+                                           base_periods_pre_exp=base_periods_pre_exp,
+                                           )
+        embedding_dim = input_embedder.embedding_dim
+        former = TransFormer(embedding_dim=embedding_dim,
+                             nhead=nhead,
+                             dim_feedforward=dim_feedforward,
+                             num_layers=num_layers,
+                             dropout=dropout,
+                             device=device,
+                             )
+        policy_val = PolicyValue(embedding_dim=embedding_dim,
+                                 selection_size=selection_size,
+                                 num_special_moves=len(special_moves),
+                                 num_players=num_players,
+                                 policy_hidden_layers=[embedding_dim*4],
+                                 value_hidden_layers=[embedding_dim*4],
+                                 special_hidden_layers=[embedding_dim*4],
+                                 )
+        super().__init__(input_embedder=input_embedder,
+                         former=former,
+                         policy_val=policy_val,
+                         special_moves=special_moves,
+                         )

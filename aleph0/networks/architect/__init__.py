@@ -1,10 +1,11 @@
-from aleph0.networks.architect.architect import Architect
+from aleph0.networks.architect.architect import Architect, AutoArchitect
 
-from aleph0.networks.architect.beginning.input_embedding import InputEmbedding
+from aleph0.networks.architect.beginning.input_embedding import InputEmbedding, AutoInputEmbedder
+
 from aleph0.networks.architect.beginning.pos_enc import (AbstractPositionalEncoding,
                                                          IdentityPosititonalEncoding,
                                                          ClassicPositionalEncoding,
-                                                         PositionalAppendingLayer,
+                                                         PositionalAppender,
                                                          )
 from aleph0.networks.architect.beginning.board_embedding import (AutoBoardSetEmbedder,
                                                                  BoardSetEmbedder,
@@ -25,13 +26,15 @@ from aleph0.networks.architect.end.policy_value import PolicyValue
 
 __all__ = [
     'Architect',
+    'AutoArchitect',
 
     "InputEmbedding",
+    "AutoInputEmbedder",
 
     "AbstractPositionalEncoding",
     "IdentityPosititonalEncoding",
     "ClassicPositionalEncoding",
-    "PositionalAppendingLayer",
+    "PositionalAppender",
 
     "AutoBoardSetEmbedder",
     "BoardSetEmbedder",

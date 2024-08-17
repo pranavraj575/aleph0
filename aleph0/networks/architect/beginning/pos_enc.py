@@ -85,7 +85,7 @@ class ClassicPositionalEncoding(AbstractPositionalEncoding):
         return X + pos_enc
 
 
-class PositionalAppendingLayer(AbstractPositionalEncoding):
+class PositionalAppender(AbstractPositionalEncoding):
     def __init__(self, input_embedding_dim, encoding_nums, base_periods_pre_exp=None):
         """
 
@@ -98,8 +98,8 @@ class PositionalAppendingLayer(AbstractPositionalEncoding):
                     1,1/2,1/4,...
                 by default uses -log(10000)/encoding_num
         """
-        super().__init__(embedding_dim = input_embedding_dim + 2*sum(self.encoding_nums))
         self.encoding_nums = encoding_nums
+        super().__init__(embedding_dim = input_embedding_dim + 2*sum(self.encoding_nums))
         if base_periods_pre_exp is None:
             base_periods_pre_exp = [-math.log(10000.)/encoding_num for encoding_num in encoding_nums]
         self.base_periods_pre_exp = base_periods_pre_exp
@@ -138,10 +138,10 @@ class PositionalAppendingLayer(AbstractPositionalEncoding):
 
 if __name__ == '__main__':
     input_embedding_dim = 7
-    appending_layer = PositionalAppendingLayer(input_embedding_dim=input_embedding_dim,
-                                               encoding_nums=(3, 3, 3),
-                                               base_periods_pre_exp=(-math.log(2), -math.log(2), -math.log(2))
-                                               )
+    appending_layer = PositionalAppender(input_embedding_dim=input_embedding_dim,
+                                         encoding_nums=(3, 3, 3),
+                                         base_periods_pre_exp=(-math.log(2), -math.log(2), -math.log(2))
+                                         )
     xyz = .69*torch.ones(1, 1, 3, input_embedding_dim)
     x = torch.arange(xyz.shape[0]).reshape(-1, 1, 1)
     x = torch.stack([x, torch.zeros_like(x), torch.zeros_like(x)], dim=-1)

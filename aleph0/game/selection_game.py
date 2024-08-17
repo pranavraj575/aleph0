@@ -186,6 +186,11 @@ class SelectionGame:
         return None
 
     @property
+    def sequence_dim(self):
+        _, pos_shape, _ = self.observation_shape
+        return len(pos_shape) - 1
+
+    @property
     def observation_shape(self):
         """
         observation is shapes ((D1,...,DN, *1),(D1,...,DN, *2),...), (D1,...,DN, N), T)
@@ -201,7 +206,6 @@ class SelectionGame:
         _, pos_shape, _ = self.observation_shape
         return pos_shape[:-1]
 
-    @staticmethod
     def get_obs_vector_shape(self):
         """
         returns T for the length of the observation extra vector

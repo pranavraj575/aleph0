@@ -112,6 +112,8 @@ class AlephZero(Algorithm):
                                                       num_reads=num_reads,
                                                       policy_value_evaluator=self.policy_value_evaluator
                                                       )
+        target_policy = torch.tensor(target_policy)
+        true_values = torch.tensor(true_values)
         perm = game.permutation_to_standard_pos
         if perm is not None:
             # we do the inverse permutation here
@@ -121,7 +123,11 @@ class AlephZero(Algorithm):
             target_values[perm] = true_values
         else:
             target_values = true_values
-        self.add_to_buffer(game=game, target_policy=target_policy, target_values=target_values)
+        # convert to batch form, then push
+        self.add_to_buffer(game=game,
+                           target_policy=target_policy.reshape(1, -1),
+                           target_values=target_values.reshape(1, -1),
+                           )
         return target_policy, target_values, (root.next_selection_moves, root.next_special_moves)
 
     def playthrough_training_data(self,
@@ -158,6 +164,8 @@ class AlephZero(Algorithm):
                                               special_moves=special_moves,
                                               softmax=True,
                                               )
+        policy = policy.flatten()
+        values = values.flatten()
         perm = game.permutation_to_standard_pos
         if perm is not None:
             values = values[perm]
@@ -287,6 +295,8 @@ class AlephZero(Algorithm):
         }
         if num_reads is None:
             num_reads = self.default_num_reads
+        if minibatch_size is None:
+            minibatch_size = batch_size
         self.playthrough_training_data(game=game,
                                        num_reads=num_reads,
                                        depth=depth,
@@ -331,6 +341,10 @@ class AlephZero(Algorithm):
                          selection_moves=None,
                          special_moves=None,
                          ):
+        if selection_moves is None:
+            selection_moves = list(game.valid_selection_moves())
+        if special_moves is None:
+            special_moves = list(game.valid_special_moves())
         if self.use_mcts_in_testing:
             policy, values = UCT_search(game=game,
                                         num_reads=self.default_num_reads,
@@ -343,7 +357,66 @@ class AlephZero(Algorithm):
                                                   special_moves=special_moves,
                                                   softmax=True,
                                                   )
+            policy = policy.flatten()
+            values = values.flatten()
             perm = game.permutation_to_standard_pos
             if perm is not None:
                 values = values[perm]
             return policy.detach(), values.detach()
+
+
+if __name__ == '__main__':
+    import math
+    import torch, numpy as np, random
+
+    torch.random.manual_seed(0)
+    np.random.seed(0)
+    random.seed(0)
+
+    from aleph0.examples.tictactoe import Toe
+    from aleph0.algs import Human
+    from aleph0.networks.architect import AutoArchitect
+    from aleph0.networks.buffers import ReplayBufferDiskStorage
+
+    game = Toe()
+
+    alg = AlephZero(network=AutoArchitect(sequence_dim=game.sequence_dim,
+                                          selection_size=game.selection_size,
+                                          additional_vector_dim=game.get_obs_vector_shape(),
+                                          underlying_set_shapes=game.get_underlying_set_shapes(),
+                                          underlying_set_sizes=game.underlying_set_sizes(),
+                                          special_moves=game.special_moves,
+                                          num_players=game.num_players,
+                                          encoding_nums=(10, 10),
+                                          base_periods_pre_exp=[-math.log(2), -math.log(2)],
+                                          embedding_dim=64,
+                                          dim_feedforward=128,
+                                          dropout=0,
+                                          num_layers=4,
+                                          ),
+                    replay_buffer=ReplayBufferDiskStorage(storage_dir='TEMP', capacity=1000, ),
+                    GameClass=Toe,
+                    )
+
+    game = game.make_move(next(game.get_all_valid_moves()))
+    game = game.make_move(next(game.get_all_valid_moves()))
+    game = game.make_move(next(game.get_all_valid_moves()))
+    game = game.make_move(((2, 1),))
+    # there is one winning move for player 0, and the rest are losing
+    # aleph should learn to only play the winning move
+    print(game)
+    for epoch in range(20):
+        alg.generate_training_data(game=game, num_reads=alg.default_num_reads)
+        alg.training_step(batch_size=16)
+        print([torch.round(t, decimals=2) for t in alg.get_policy_value(game=game)])
+
+    for epoch in range(200):
+        epoch_info = alg.epoch(game=game,
+                               batch_size=64,
+                               minibatch_size=16,
+                               )
+        print(epoch, end='\r')
+    # clear buffer
+    alg.clear()
+
+    print(play_game(Toe(), [Human(), alg])[0])

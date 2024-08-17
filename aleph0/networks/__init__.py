@@ -7,7 +7,7 @@ from aleph0.networks.architect.beginning.input_embedding import InputEmbedding
 from aleph0.networks.architect.beginning.pos_enc import (AbstractPositionalEncoding,
                                                          IdentityPosititonalEncoding,
                                                          ClassicPositionalEncoding,
-                                                         PositionalAppendingLayer,
+                                                         PositionalAppender,
                                                          )
 from aleph0.networks.architect.beginning.board_embedding import (AutoBoardSetEmbedder,
                                                                  BoardSetEmbedder,
@@ -37,7 +37,7 @@ __all__ = [
     "AbstractPositionalEncoding",
     "IdentityPosititonalEncoding",
     "ClassicPositionalEncoding",
-    "PositionalAppendingLayer",
+    "PositionalAppender",
 
     "AutoBoardSetEmbedder",
     "BoardSetEmbedder",

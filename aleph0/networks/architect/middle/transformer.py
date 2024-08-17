@@ -22,6 +22,15 @@ class TransFormer(Former):
                  dropout=.1,
                  device=None,
                  ):
+        """
+        Args:
+            embedding_dim: transformer embedding dim
+            nhead: number of attention heads in
+            dim_feedforward: feedforward dim in each transformer layer
+            num_layers: overall nubmer of layers
+            dropout: dropout to use for each layer
+            device: device to put stuff on
+        """
         super().__init__()
         # flatten the middle sequence
         self.flat = nn.Flatten(start_dim=1, end_dim=-2)

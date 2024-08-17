@@ -39,12 +39,13 @@ class Node:
         Args:
             move: which move we got from parent
             terminal: whether node is terminal
-            next_moves: iterable of playable moves by player from the state
+            next_selection_moves: iterable of playable selection moves by player from the state
+                ORDER MATTERS
+            next_special_moves: iterable of playable special moves by player from the state
                 ORDER MATTERS
             num_players: number of players
             parent: previous node
             exploration_constant: exploration constatn
-            value_estimate: estimate of value for each player (if None, can set later)
         """
         self.move = move
         self.parent = parent
@@ -68,39 +69,43 @@ class Node:
         self.child_total_value = np.zeros((len(self.next_moves), num_players))
         self.child_number_visits = np.zeros((len(self.next_moves), 1))
 
+    @property
     def number_visits(self):
         return self.parent.child_number_visits[self.parent.move_idx[self.move]]
 
+    @property
     def child_Q(self):
         return self.child_total_value/(1 + self.child_number_visits)
 
+    @property
     def child_U(self):
         # Allegedly this version is used in alphazero
-        return self.exp_constant*np.sqrt(self.number_visits())*(self.child_priors/(1 + self.child_number_visits))
+        return self.exp_constant*np.sqrt(self.number_visits)*(self.child_priors/(1 + self.child_number_visits))
         # standard UCT exploration term (multiplied by child priors)
-        # return self.exp_constant*self.child_priors*np.sqrt(np.log(self.number_visits())/(1 + self.child_number_visits))
+        # return self.exp_constant*self.child_priors*np.sqrt(np.log(self.number_visits)/(1 + self.child_number_visits))
 
+    @property
     def unexplored_indices(self):
         return np.where(self.child_number_visits == 0)[0]
 
     def pick_move(self):
         # we want to check the q values only of current player when picking move
-        bestmove = self.child_Q()[:, (self.current_player,)] + self.child_U()
-        if self.fully_expanded():
+        bestmove = self.child_Q[:, (self.current_player,)] + self.child_U
+        if self.fully_expanded:
             return self.next_moves[np.argmax(bestmove)]
         else:
             # in this case, sample from the unexplored nodes
-            return self.next_moves[max(self.unexplored_indices(),
+            return self.next_moves[max(self.unexplored_indices,
                                        key=lambda idx: self.child_priors[idx])]
 
     def get_final_policy(self):
-        # return torch.nn.Softmax(-1)(torch.tensor(self.child_Q())).flatten().detach().numpy()
+        # return torch.nn.Softmax(-1)(torch.tensor(self.child_Q)).flatten().detach().numpy()
         # Alphazero uses child number visits because apparently this is less prone to outliers
         return (self.child_number_visits/np.sum(self.child_number_visits)).flatten()
 
     def get_final_values(self):
         # weighted sum of Q values
-        return (self.get_final_policy().reshape((1, -1))@self.child_Q()).flatten()
+        return (self.get_final_policy().reshape((1, -1))@self.child_Q).flatten()
 
     def select_leaf(self, game: SelectionGame):
         """
@@ -125,18 +130,21 @@ class Node:
             np.zeros([len(child_priors)], dtype=np.float32) + 0.3)
         return child_priors
 
+    @property
     def is_root(self):
         return isinstance(self.parent, DummyNode)
 
+    @property
     def is_terminal(self):
         return self.terminal
 
+    @property
     def fully_expanded(self):
         return np.all(self.child_number_visits != 0)
 
     def expand(self, child_priors):
         self.is_expanded = True
-        if self.is_root():  # add dirichlet noise to child_priors in root node
+        if self.is_root:  # add dirichlet noise to child_priors in root node
             child_priors = self.add_dirichlet_noise(child_priors=child_priors)
 
         self.child_priors = child_priors.reshape((-1, 1))
@@ -202,7 +210,7 @@ def UCT_search(game: SelectionGame, num_reads, policy_value_evaluator):
         return None, root
     for i in range(num_reads):
         leaf, leaf_game = root.select_leaf(game=game)
-        if leaf.is_terminal():
+        if leaf.is_terminal:
             leaf.backup(value_estimate=leaf_game.get_result())
         else:
             policy, value_estimates = policy_value_evaluator(
