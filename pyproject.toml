@@ -1,6 +1,6 @@
 [project]
 name = "aleph0"
-version = "0.0.0"
+version = "0.0.10000069"
 authors = [
   { name="Pranav", email="pranavraj575@gmail.com" },
 ]
@@ -16,14 +16,15 @@ dependencies = [
     'torch',
     'numpy',
 ]
-#[project.optional-dependencies]
-#gui = ["pygame"]
+[project.optional-dependencies]
+jenga = [
+    'scipy'
+]
 
 [project.urls]
 Homepage = "https://github.com/pranavraj575/aleph0"
 
-#[tool.coverage.run]
-#omit = [
-#    "unstable_baselines3_tests/*",
-#    "unstable_baselines3_tests",
-#    ]
+[tool.coverage.run]
+omit = [
+    "aleph0/tests",
+    ]
