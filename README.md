@@ -12,4 +12,4 @@ and whose action space arises from choosing indices in this observation space.
   git clone https://github.com/pranavraj575/aleph0
   pip3 install -e aleph0
   ```
-To play Jenga, must install additional packages ```pip3 install aleph0[jenga]```
+To play Jenga, must install additional packages: ```pip3 install aleph0[jenga]```
