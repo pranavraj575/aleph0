@@ -1,6 +1,7 @@
 from aleph0.networks.architect.architect import (Architect,
                                                  AutoArchitect,
                                                  AutoTransArchitect,
+                                                 AutoCisArchitect,
                                                  )
 
 from aleph0.networks.architect.beginning.input_embedding import InputEmbedding, AutoInputEmbedder
@@ -31,6 +32,7 @@ __all__ = [
     'Architect',
     'AutoArchitect',
     'AutoTransArchitect',
+    'AutoCisArchitect',
 
     "InputEmbedding",
     "AutoInputEmbedder",

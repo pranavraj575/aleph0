@@ -1,7 +1,11 @@
 from aleph0.networks.ffn import FFN
 from aleph0.networks.architect.middle.collapse import Collapse
 
-from aleph0.networks.architect.architect import Architect
+from aleph0.networks.architect.architect import (Architect,
+                                                 AutoArchitect,
+                                                 AutoTransArchitect,
+                                                 AutoCisArchitect,
+                                                 )
 
 from aleph0.networks.architect.beginning.input_embedding import InputEmbedding
 from aleph0.networks.architect.beginning.pos_enc import (AbstractPositionalEncoding,
@@ -31,6 +35,9 @@ __all__ = [
     "Collapse",
 
     'Architect',
+    'AutoArchitect',
+    'AutoTransArchitect',
+    'AutoCisArchitect',
 
     "InputEmbedding",
 
