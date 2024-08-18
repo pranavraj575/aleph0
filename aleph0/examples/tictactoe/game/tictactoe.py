@@ -51,11 +51,15 @@ class Toe(FixedSizeSelectionGame):
         else:
             return [0, 1]
 
-    @property
-    def representation(self):
+    @staticmethod
+    def get_indices():
         I = torch.cat((torch.arange(3).view((3, 1, 1)), torch.zeros((3, 1, 1))), dim=-1)
         J = torch.cat((torch.zeros((1, 3, 1)), torch.arange(3).view((1, 3, 1))), dim=-1)
-        return self.board.clone(), (I + J), torch.tensor([self.current_player])
+        return I + J
+
+    @property
+    def representation(self):
+        return self.board.clone(), Toe.get_indices(), torch.tensor([self.current_player])
 
     @property
     def observation(self):
@@ -96,6 +100,56 @@ class Toe(FixedSizeSelectionGame):
                 return ret
         return (.5, .5)
 
+    def symmetries(self, policy_vector):
+
+        def rot_game(game, policy):
+            # 90 deg counterclockwise rotation
+            rot = Toe(current_player=game.current_player,
+                      board=game.board.rot90(),
+                      )
+            rot_indices = Toe.get_indices().rot90()
+            # queries are the indices (of the ORIGINAL BOARD) that the rotated policy will query
+            # order is the order that rot_policy should be in
+            queries = rot_indices[torch.where(torch.eq(rot.board, Toe.EMPTY))]
+
+            # rotating the policy is way more annoying than just a mirror
+
+            # policy[orig_idx_to_policy_idx[(i,j)]] is the policy value associated with that square
+            orig_idx_to_policy_idx = {(i.item(), j.item()): k
+                                      for k, (i, j) in enumerate(zip(*torch.where(torch.eq(game.board, Toe.EMPTY))))}
+
+            rot_policy = torch.tensor([policy[orig_idx_to_policy_idx[i.item(), j.item()]] for (i, j) in queries])
+
+            return rot, rot_policy
+
+        yield (self, policy_vector)
+        rot, rot_pol = self, policy_vector
+        for _ in range(3):
+            rot, rot_pol = rot_game(game=rot, policy=rot_pol)
+            yield (rot, rot_pol)
+
+        # we flip the game in the x direction
+        # note that the order in self.get_valid_next_selections is the order of torch.where
+        # this goes along axes in order
+        # i.e. torch.where(torch.zeros(2,2)==0) will be ordered (0,0), (0,1), (1,0), (1,1)
+
+        flipped_game = Toe(current_player=self.current_player,
+                           board=self.board.flip(dims=(1,))
+                           )
+        flipped_policy = torch.zeros_like(policy_vector)
+        k = 0
+        for i in range(3):
+            kp = len(torch.where(torch.eq(self.board[i], Toe.EMPTY))[0])
+            # we need to take the range (k:kp) and flip it
+            flipped_policy[k:k + kp] = policy_vector[range(k + kp - 1, k - 1, -1)]
+            k = k + kp
+
+        yield (flipped_game, flipped_policy)
+        rot, rot_pol = flipped_game, flipped_policy
+        for _ in range(3):
+            rot, rot_pol = rot_game(game=rot, policy=rot_pol)
+            yield (rot, rot_pol)
+
     def __str__(self):
         return '---\n' + str(self.board.numpy()
                              ).replace(' ', ''
@@ -117,3 +171,12 @@ if __name__ == '__main__':
         if toe.is_terminal(): break
     print(toe.get_result())
     toe.possible_move_cnt()
+
+    toe=Toe()
+    print('getting symmetries')
+    # fake policy vector
+    pol_vec = torch.arange(len(list(toe.get_all_valid_moves())))
+    for sym, sym_pol in toe.symmetries(pol_vec):
+        print(sym)
+        print(sym_pol)
+        print()

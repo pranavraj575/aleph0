@@ -128,7 +128,10 @@ class AlephZero(Algorithm):
         return loss
 
     def add_to_buffer(self, game: SelectionGame, target_policy, target_values):
-        self.buffer.push((game.representation, target_policy, target_values))
+        # increase samples by adding all symmertries of the game as well
+        for sym_game,sym_policy in game.symmetries(policy_vector=target_policy):
+            self.buffer.push((sym_game.representation, sym_policy, target_values))
+        #self.buffer.push((game.representation, target_policy, target_values))
 
     def generate_training_data(self,
                                game: SelectionGame,
