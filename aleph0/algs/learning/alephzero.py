@@ -1,4 +1,6 @@
-import os, torch
+import os, torch, pickle
+import shutil
+
 from torch import nn
 
 from aleph0.algs.algorithm import Algorithm
@@ -45,7 +47,26 @@ class AlephZero(Algorithm):
         self.buffer.clear()
 
     def save(self, save_dir):
+        # save this separately from info
+        epoch_infos = self.info.pop('epoch_infos')
         super().save(save_dir=save_dir)
+        if epoch_infos:
+            epoch_info_save_dir = os.path.join(save_dir, 'epoch_infos')
+            if 'epoch_info_save_dir' in self.info and self.info['epoch_info_save_dir'] != epoch_info_save_dir:
+                shutil.copytree(self.info['epoch_info_save_dir'], epoch_info_save_dir)
+
+            if not os.path.exists(epoch_info_save_dir):
+                os.makedirs(epoch_info_save_dir)
+
+            filename = os.path.join(epoch_info_save_dir,
+                                    str(epoch_infos[0]['epoch']) + '_to_' +
+                                    str(epoch_infos[-1]['epoch']) + '.pkl'
+                                    )
+            f = open(filename, 'wb')
+            pickle.dump(epoch_infos, f)
+            f.close()
+            self.info['epoch_info_save_dir'] = epoch_info_save_dir
+        self.info['epoch_infos'] = []
         dic = {
             'model': self.network.state_dict(),
             'optim': self.optim.state_dict(),
@@ -53,9 +74,27 @@ class AlephZero(Algorithm):
         torch.save(dic, os.path.join(save_dir, 'model.pkl'))
         self.buffer.save(save_dir=os.path.join(save_dir, 'buffer'))
 
+    @property
+    def epoch_infos(self):
+        if 'epoch_info_save_dir' in self.info:
+            # must grab past epoch infos
+            epoch_info_save_dir = self.info['epoch_info_save_dir']
+            files = [f for f in os.listdir(epoch_info_save_dir) if '_to_' in f]
+            # sort by start epoch
+            files.sort(key=lambda n: int(n.split('_to_')[0]))
+            epoch_infos = []
+            for fn in files:
+                f = open(os.path.join(epoch_info_save_dir, fn), 'rb')
+                epoch_infos.extend(pickle.load(f))
+                f.close()
+            epoch_infos.extend(self.info['epoch_infos'])
+            return epoch_infos
+        else:
+            return self.info['epoch_infos']
+
     def load(self, save_dir):
         super().load(save_dir=save_dir)
-        dic = torch.load(os.path.join(save_dir, 'model.pkl'))
+        dic = torch.load(os.path.join(save_dir, 'model.pkl'), weights_only=True)
         self.network.load_state_dict(dic['model'])
         self.optim.load_state_dict(dic['optim'])
         self.buffer.load(save_dir=os.path.join(save_dir, 'buffer'))
@@ -152,7 +191,7 @@ class AlephZero(Algorithm):
 
             if policy_noise is not None:
                 policy = policy_noise(policy)
-            move_idx = torch.multinomial(torch.tensor(policy), num_samples=1).item()
+            move_idx = torch.multinomial(policy, num_samples=1).item()
             move = (selection_moves + special_moves)[move_idx]
             game = game.make_move(move)
             depth -= 1
@@ -238,12 +277,12 @@ class AlephZero(Algorithm):
 
                 self_idx = perm.index(0)
                 alg_list = [alg_list[i] for i in perm]
-                outcomes, _, _ = play_game(game=game,
-                                           alg_list=alg_list,
-                                           n=1,
-                                           save_histories=False,
-                                           depth=testing_depth,
-                                           )
+                outcomes, _ = play_game(game=game,
+                                        alg_list=alg_list,
+                                        n=1,
+                                        save_histories=False,
+                                        depth=testing_depth,
+                                        )
                 outcome = outcomes[0]
                 test = {
                     'perm': perm,
@@ -367,7 +406,7 @@ class AlephZero(Algorithm):
 
 if __name__ == '__main__':
     import math
-    import torch, numpy as np, random
+    import numpy as np, random
 
     torch.random.manual_seed(0)
     np.random.seed(0)

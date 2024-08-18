@@ -13,14 +13,20 @@ class Exhasutive(Algorithm):
         can be run with more iterations to get a better approximation of probabilistic games
     """
 
-    def __init__(self, iterations=1):
+    def __init__(self, iterations=1, cache_depth_rng=(-1, -1)):
         """
         Args:
             iterations: number of times to sample to find a distribution
                 for deterministic games, this should always be 1, no reason to sample more times
+            cache_depth_rng: depth to keep a cache to
+                if (0,float('inf')), keeps a cache of all seen observations
+                if (0,2), keeps only the 0th and 1st depth boards
         """
+        super().__init__()
         assert iterations > 0
         self.iterations = iterations
+        self.cache = dict()
+        self.cache_depth_rng = cache_depth_rng
 
     def choose_distribution(self, all_values, player):
         """
@@ -37,7 +43,20 @@ class Exhasutive(Algorithm):
         dist[indices] = 1/len(indices)
         return dist
 
-    def minimax_search(self, game: SelectionGame, moves=None):
+    def minimax_search(self, game: SelectionGame, moves=None, depth=0):
+        if depth < self.cache_depth_rng[0] or depth >= self.cache_depth_rng[1]:
+            return self._minimax_search(game=game, moves=moves)
+        boards, positions, vec = game.observation
+        boards = tuple(tuple(board.flatten().tolist()) for board in boards)
+        positions = tuple(positions.flatten().tolist())
+        vec = tuple(vec.flatten().tolist())
+        obs = boards, positions, vec, game.current_player  # current player is important probably
+
+        if obs not in self.cache:
+            self.cache[obs] = self._minimax_search(game=game, moves=moves, depth=depth + 1)
+        return self.cache[obs]
+
+    def _minimax_search(self, game: SelectionGame, moves=None, depth=0):
         """
         minimax search on one game state
         Args:
@@ -58,6 +77,7 @@ class Exhasutive(Algorithm):
             else:
                 _, vals = self.minimax_search(game=next_game,
                                               moves=None,
+                                              depth=depth,
                                               )
                 all_values.append(vals)
         # shape (N,K) for K number of players

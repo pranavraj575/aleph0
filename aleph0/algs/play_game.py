@@ -9,6 +9,7 @@ def play_game(game: SelectionGame,
               n=1,
               save_histories=True,
               depth=float('inf'),
+              print_dist=False
               ):
     """
     plays n games starting from game state, using each alg in alg_list as player
@@ -39,12 +40,18 @@ def play_game(game: SelectionGame,
                 special_moves = [move for move in special_moves if move in pos_moves]
                 pos_moves = None
             valid_moves = selection_moves + special_moves
-            dist, _ = alg.get_policy_value(game=temp,
-                                           selection_moves=selection_moves,
-                                           special_moves=special_moves,
-                                           )
-
+            dist, values = alg.get_policy_value(game=temp,
+                                             selection_moves=selection_moves,
+                                             special_moves=special_moves,
+                                             )
+            if print_dist:
+                print('picking from dist:')
+                print(dist.numpy())
+                if values is not None:
+                    print('predicted values per player:')
+                    print(values.numpy())
             move_idx = torch.multinomial(dist, 1).item()
+            # move_idx = torch.argmax(dist).item()
             next_temp = temp.make_move(valid_moves[move_idx])
             if save_histories:
                 history.append((game, valid_moves[move_idx], next_temp))
