@@ -128,10 +128,11 @@ class AlephZero(Algorithm):
         return loss
 
     def add_to_buffer(self, game: SelectionGame, target_policy, target_values):
+        target_values = target_values.reshape(1, -1)
         # increase samples by adding all symmertries of the game as well
-        for sym_game,sym_policy in game.symmetries(policy_vector=target_policy):
-            self.buffer.push((sym_game.representation, sym_policy, target_values))
-        #self.buffer.push((game.representation, target_policy, target_values))
+        for sym_game, sym_policy in game.symmetries(policy_vector=target_policy):
+            self.buffer.push((sym_game.representation, sym_policy.reshape(1, -1), target_values))
+        # self.buffer.push((game.representation, target_policy, target_values))
 
     def generate_training_data(self,
                                game: SelectionGame,
@@ -167,8 +168,8 @@ class AlephZero(Algorithm):
             target_values = true_values
         # convert to batch form, then push
         self.add_to_buffer(game=game,
-                           target_policy=target_policy.reshape(1, -1),
-                           target_values=target_values.reshape(1, -1),
+                           target_policy=target_policy,
+                           target_values=target_values,
                            )
         return target_policy, target_values, (root.next_selection_moves, root.next_special_moves)
 
