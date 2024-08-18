@@ -1,4 +1,7 @@
-from aleph0.networks.architect.architect import Architect, AutoArchitect
+from aleph0.networks.architect.architect import (Architect,
+                                                 AutoArchitect,
+                                                 AutoTransArchitect,
+                                                 )
 
 from aleph0.networks.architect.beginning.input_embedding import InputEmbedding, AutoInputEmbedder
 
@@ -27,6 +30,7 @@ from aleph0.networks.architect.end.policy_value import PolicyValue
 __all__ = [
     'Architect',
     'AutoArchitect',
+    'AutoTransArchitect',
 
     "InputEmbedding",
     "AutoInputEmbedder",
