@@ -4,12 +4,11 @@ import torch, os, shutil, pickle
 class ReplayBuffer:
     storage_dir = None
 
-    def set_storage_dir(self, storage_dir, reset=False):
+    def set_storage_dir(self, storage_dir):
         self.storage_dir = storage_dir
         if not os.path.exists(storage_dir):
             os.makedirs(storage_dir)
-        if reset:
-            self.reset_storage()
+        self.reset_storage()
 
     def reset_storage(self):
         """

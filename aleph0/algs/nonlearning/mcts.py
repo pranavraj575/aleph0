@@ -316,11 +316,11 @@ class MCTS(Algorithm):
             game=game,
             num_reads=self.num_reads,
             policy_value_evaluator=(
-                lambda game, moves:
+                lambda game, selection_moves, special_moves:
                 self.policy_value_eval_for_UCT(
                     game=game,
-                    selection_moves=list(game.valid_selection_moves()),
-                    special_moves=list(game.valid_special_moves()),
+                    selection_moves=selection_moves,
+                    special_moves=special_moves,
                     trials=self.num_rollout_samples,
                 )
             ),
@@ -340,7 +340,18 @@ if __name__ == '__main__':
     # there is one winning move for player 0, and the rest are losing
     # MCTS should learn to only play the winning move
     print(game)
-    alg = MCTS(num_reads=1000)
-    print(alg.get_policy_value(game=game))
+    alg = MCTS(num_reads=696)
+    pol,val=alg.get_policy_value(game=game)
+    print(pol,val)
+
+    # checking symmetries
+    print('checking symmetries')
+    for sym_game,sym_pol in game.symmetries(pol):
+        print()
+        print(sym_game)
+        print(sym_pol)
+
+
+
 
     print(play_game(Toe(), [Human(), alg])[0])

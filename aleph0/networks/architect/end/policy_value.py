@@ -27,7 +27,7 @@ class PolicyValue(nn.Module):
         super().__init__()
         self.embedding_dim = embedding_dim
         self.selection_size = selection_size
-        self.selection_policy_net = FFN(input_dim=self.embedding_dim*self.selection_size,
+        self.selection_policy_net = FFN(input_dim=self.embedding_dim*(1 + self.selection_size),
                                         output_dim=1,
                                         hidden_layers=policy_hidden_layers,
                                         )
@@ -64,7 +64,7 @@ class PolicyValue(nn.Module):
         selections = []
         # do each element of batch independently for now
         for m in range(M):
-            sel = torch.zeros(len(selection_moves), self.selection_size*self.embedding_dim)
+            sel = torch.zeros(len(selection_moves), self.embedding_dim*(1 + self.selection_size))
             # set selections by order
             for k, kth_idxs in enumerate(zip(*selection_moves)):
                 # kth_idxs is a list of n-dim indices of size len(selection_moves).
@@ -72,6 +72,8 @@ class PolicyValue(nn.Module):
                 # embedding[m].__getitem__(list(zip(*kth_idxs))) is roughly [embedding[m][idx] for idx in kth_idxs]
                 # thus, this is an array of size (num moves, embedding dim)
                 sel[:, k*self.embedding_dim:(k + 1)*self.embedding_dim] = embedding[m].__getitem__(list(zip(*kth_idxs)))
+            # also include the cls embedding
+            sel[:, -self.embedding_dim:] = cls_embedding[m]
             selections.append(sel)
         # size (M, len(selection_moves), self.selection_size*self.embedding_dim)
         selections = torch.stack(selections, dim=0)
@@ -106,4 +108,4 @@ if __name__ == '__main__':
     print(pv.forward(embedding=obs,
                      cls_embedding=cls_embed,
                      selection_moves=toe.valid_selection_moves(),
-                     special_move_idxs=(),))
+                     special_move_idxs=(), ))

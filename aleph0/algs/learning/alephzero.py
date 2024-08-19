@@ -42,6 +42,10 @@ class AlephZero(Algorithm):
         self.info['epoch_infos'] = []
         self.use_mcts_in_testing = use_mcts_in_testing
 
+    @property
+    def epochs(self):
+        return self.info['epochs']
+
     def clear(self):
         super().clear()
         self.buffer.clear()
