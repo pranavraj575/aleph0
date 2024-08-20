@@ -14,10 +14,11 @@ class Multiverse:
         self.max_length = None
         self._set_max_length()
 
+    @property
     def representation(self):
-        return (self.main_timeline.representation(),
-                [timeline.representation() for timeline in self.up_list],
-                [timeline.representation() for timeline in self.down_list],
+        return (self.main_timeline.representation,
+                [timeline.representation for timeline in self.up_list],
+                [timeline.representation for timeline in self.down_list],
                 )
 
     @staticmethod

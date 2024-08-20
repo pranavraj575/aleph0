@@ -1041,7 +1041,7 @@ class Chess5d(SelectionGame):
 
         should return clones of any internal variables
         """
-        return (self.multiverse.representation(),
+        return (self.multiverse.representation,
                 self.current_player,
                 self.first_player,
                 copy.deepcopy(self.turn_history),
@@ -1106,6 +1106,14 @@ class Chess5d(SelectionGame):
 if __name__ == '__main__':
     from aleph0.algs import Human, play_game
 
+    chess = Chess5d()
+    chess = chess.make_move(next(chess.get_all_valid_moves()))
+    chess = chess.make_move(next(chess.get_all_valid_moves()))
+    chess = chess.make_move(next(chess.get_all_valid_moves()))
+
+    print(chess)
+    rep=chess.representation
+    print(Chess5d.from_representation(rep))
     # TODO: check termination eval
     chess = Chess5d()
     chess = chess.make_move(next(chess.get_all_valid_moves()))

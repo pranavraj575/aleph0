@@ -9,6 +9,7 @@ class Timeline:
         self.start_idx = start_idx
         self.board_list = board_list
 
+    @property
     def representation(self):
         return [board.representation for board in self.board_list], self.start_idx
 

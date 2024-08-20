@@ -2,6 +2,7 @@ import torch
 
 from aleph0.examples.chess.game.piece import P
 
+
 class Board:
     BOARD_SIZE = 8
     BOARD_SHAPE = (BOARD_SIZE, BOARD_SIZE)
@@ -43,6 +44,7 @@ class Board:
     def get_piece(self, idx):
         return self.board[idx].item()
 
+    @property
     def representation(self):
         return self.board.clone()
 
