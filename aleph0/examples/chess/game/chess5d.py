@@ -11,6 +11,7 @@ from aleph0.examples.chess.game.piece import P
 class Chess5d(SelectionGame):
     END_TURN = 'END_TURN'
     BLOCKED_PIECE = P.TOTAL_PIECES
+    MAX_BORING_MOVES = 50  # TODO: that
 
     # reserve a separate index for a blocked board (i.e. board that does not exist yet)
     # this is necessary since knights can jump over blocked boards, but other pieces cannot
@@ -1056,11 +1057,11 @@ class Chess5d(SelectionGame):
         Returns: SubsetGame object
         """
         mult_rep, current_player, first_player, turn_history, term_ev = representation
-        Chess5d(initial_multiverse=Multiverse.from_representation(mult_rep),
-                current_player=current_player,
-                first_player=first_player,
-                term_ev=term_ev,
-                )
+        return Chess5d(initial_multiverse=Multiverse.from_representation(mult_rep),
+                       current_player=current_player,
+                       first_player=first_player,
+                       term_ev=term_ev,
+                       )
 
     def make_move(self, local_move):
         out = self.clone()

@@ -374,7 +374,7 @@ class AlephZero(Algorithm):
                                                all_possible_perms=testing_possible_perms,
                                                )
             epoch_info['testing'] = testing_dict
-
+        epoch_info['buffer_size'] = len(self.buffer)
         epoch_info['overall_loss'] = overall_loss
         epoch_info['policy_loss'] = policy_loss
         epoch_info['value_loss'] = value_loss
