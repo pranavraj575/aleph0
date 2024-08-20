@@ -1057,11 +1057,13 @@ class Chess5d(SelectionGame):
         Returns: SubsetGame object
         """
         mult_rep, current_player, first_player, turn_history, term_ev = representation
-        return Chess5d(initial_multiverse=Multiverse.from_representation(mult_rep),
+        game = Chess5d(initial_multiverse=Multiverse.from_representation(mult_rep),
                        current_player=current_player,
                        first_player=first_player,
                        term_ev=term_ev,
                        )
+        game.turn_history = turn_history
+        return game
 
     def make_move(self, local_move):
         out = self.clone()
@@ -1112,7 +1114,7 @@ if __name__ == '__main__':
     chess = chess.make_move(next(chess.get_all_valid_moves()))
 
     print(chess)
-    rep=chess.representation
+    rep = chess.representation
     print(Chess5d.from_representation(rep))
     # TODO: check termination eval
     chess = Chess5d()

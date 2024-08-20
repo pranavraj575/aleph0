@@ -251,6 +251,40 @@ class Chess2d(Chess5d, FixedSizeSelectionGame):
         (i1, j1), (i2, j2) = move
         return Board.BOARD_SQUARES*(i1*J + j1) + i2*J + j2
 
+    @property
+    def representation(self):
+        """
+        Returns: representation of self, likely a tuple of tensors
+            often this is the same as self.observation, (i.e. for perfect info games)
+        all information required to play the game must be obtainable from representation
+        i.e. self.from_represnetation(self.represnetation) must be functionally equivalent to self
+
+        should return clones of any internal variables
+        """
+        return (self.multiverse.main_timeline.representation,
+                self.current_player,
+                self.first_player,
+                copy.deepcopy(self.turn_history),
+                self.term_ev,
+                )
+
+    @staticmethod
+    def from_representation(representation):
+        """
+        returns a SubsetGame instance from the output of self.get_representation
+        Args:
+            representation: output of self.get_representation
+        Returns: SubsetGame object
+        """
+        tl_rep, current_player, first_player, turn_history, term_ev = representation
+        game = Chess2d(initial_board=None,
+                       initial_timeline=Timeline.from_representation(tl_rep),
+                       current_player=current_player,
+                       first_player=first_player,
+                       term_ev=term_ev,
+                       )
+        game.turn_history = turn_history
+        return game
 
 if __name__ == '__main__':
     from aleph0.algs import Human, play_game
