@@ -50,7 +50,7 @@ class Architect(nn.Module):
             observation: (boards, indexes, vector) observation
             selection_moves: selection mvoes, iterable of list(multidim index)
                 usable by policy value net
-            special_move_idxs: indexes of special moves, usable by policy value net
+            special_moves: special moves, iterable of special moves readible by the game being played
             softmax: whether to softmax output
         Returns:
             policy, value, same as policy value net
@@ -95,8 +95,6 @@ class AutoArchitect(Architect):
                 if unspecified, uses ClassicPositionalEncoding
             base_periods_pre_exp: to be used in PositionalAppender
             embedding_dim: embedding dim to use
-            nhead: number of heads in transformer
-            num_layers: number of layers in transformer
             device: device to put stuff on
         """
 
@@ -158,6 +156,7 @@ class AutoTransArchitect(AutoArchitect):
                 if unspecified, uses ClassicPositionalEncoding
             base_periods_pre_exp: to be used in PositionalAppender
             embedding_dim: embedding dim to use
+            dim_feedforward: feedforward dim in each transformer layer
             nhead: number of heads in transformer
             num_layers: number of layers in transformer
             device: device to put stuff on
