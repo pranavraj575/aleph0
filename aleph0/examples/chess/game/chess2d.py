@@ -34,7 +34,7 @@ class Chess2d(Chess5d, FixedSizeSelectionGame):
 
     def material_draw(self):
         board = self.get_current_board()
-        if self.present_player_in_check():
+        if self.current_player_in_check():
             # then it is not a draw
             return False
         for idx in board.all_pieces():
@@ -118,19 +118,17 @@ class Chess2d(Chess5d, FixedSizeSelectionGame):
             game = self
         print(game.get_current_board().__str__())
 
-
     def make_move(self, local_move):
         out = self.clone()
         global_move = self.convert_to_global_move(local_move)
-        capture, terminal = out._mutate_make_move(global_move)
-
+        # this cannot be a terminal move, as the current_player always can END_TURN
+        capture, _ = out._mutate_make_move(global_move)
+        # this can be terminal, if current_player ends turn in check
+        _, terminal = out._mutate_make_move(Chess2d.END_TURN)
         if terminal:
             out.term_ev = out._terminal_eval(mutation=False)
         elif out.material_draw():
             out.term_ev = (.5, .5)  # draw by lack of mating material
-        else:
-            # only do this if non terminal
-            out._mutate_make_move(Chess2d.END_TURN)
         out.prune_timeline()
         return out
 
@@ -260,10 +258,87 @@ class Chess2d(Chess5d, FixedSizeSelectionGame):
         game.turn_history = turn_history
         return game
 
+    def __str__(self):
+        tl = self.multiverse.main_timeline.clone()
+        tl.start_idx = 0
+        return tl.__str__()
+
 
 if __name__ == '__main__':
     from aleph0.algs import Human, play_game
 
-    chess = Chess2d()
-    print(chess.possible_move_cnt())
-    print(play_game(chess, [Human(), Human()], save_histories=False))
+    board = torch.zeros(Board.BOARD_SHAPE, dtype=torch.long)
+    I, J = Board.BOARD_SHAPE
+    board[I - 1, J - 1] = P.as_player(P.KING, P.P1)
+    board[0, 0] = P.as_player(P.KING, P.P0)
+    board[0, 1] = P.as_player(P.QUEEN, P.P0)
+    board[1, 0] = P.as_player(P.ROOK, P.P0)
+
+    root_game = Chess2d(initial_board=Board(board=board))
+
+    # this should be a draw by insufficient material
+    game = root_game.make_move(((0, 1), (6, 7)))
+    game = game.make_move(((0, 0), (1, 0)))
+    game = game.make_move(((1, 0), (1, 6)))
+    game = game.make_move(((1, 0), (0, 0)))
+    game = game.make_move(((1, 6), (7, 6)))
+    game = game.make_move(((0, 0), (0, 1)))
+    print(game)
+    assert game.is_terminal()
+    print('expected draw:', game.get_result())
+    assert game.get_result() == (.5, .5)
+
+    # (1b) in Chess5d._terminal_eval: dumb move, in check
+    game = root_game.make_move(((0, 1), (6, 7)))
+    game = game.make_move(((0, 0), (1, 1)))
+    print(game)
+    assert game.is_terminal()
+    print('expected p0 win:', game.get_result())  # P0 should win, as P1 could have taken the queen but did not
+    assert game.get_result() == (1, 0)
+
+    # (2b) in Chess5d._terminal_eval: dumb move, not in check
+    game = root_game.make_move(((0, 1), (0, 6)))
+    game = game.make_move(((0, 0), (1, 1)))
+    print(game)
+    assert game.is_terminal()
+    print('expected p0 win:', game.get_result())  # P0 should win, as P1 could have taken the queen but did not
+    assert game.get_result() == (1, 0)
+
+    # stalemate
+    game = root_game.make_move(((0, 1), (0, 6)))
+    game = game.make_move(((0, 0), (1, 0)))
+    game = game.make_move(((0, 6), (5, 6)))
+    game = game.make_move(((1, 0), (0, 0)))
+    game = game.make_move(((0, 0), (1, 1)))  # this position is stalemate
+    print(game)
+    # however, this will return false, since
+    #   we will do a stalemate check next turn, when P1 fails to make a valid turn
+    #   this is so we do not need to compute stalemate every turn
+    print('expected false:', game.is_terminal())
+    assert not game.is_terminal()
+    game = game.make_move(next(game.get_all_valid_moves()))
+    print('expected true:', game.is_terminal())
+    assert game.is_terminal()
+    print('expected draw:', game.get_result())
+    assert game.get_result() == (.5, .5)
+
+    # checkmate
+    game = root_game.make_move(((0, 1), (0, 6)))
+    game = game.make_move(((0, 0), (1, 0)))
+    game = game.make_move(((1, 0), (1, 7)))
+
+    # again, this is checkmate, but we do the check next turn
+    print('expected false:', game.is_terminal())
+    assert not game.is_terminal()
+    game = game.make_move(next(game.get_all_valid_moves()))
+    print(game)
+    print('expected true:', game.is_terminal())
+    assert game.is_terminal()
+    print('expected P0 win:', game.get_result())
+    assert game.get_result() == (1, 0)
+
+    quit()
+
+    print(play_game(game, [Human(), Human()], save_histories=False))
+
+    print(Chess2d().possible_move_cnt())

@@ -24,6 +24,7 @@ class Chess5d(SelectionGame):
                  first_player=P.P0,
                  save_moves=True,
                  term_ev=None,
+                 full_stalemate_check=False,  # TODO: That
                  ):
         """
         implemented 5d chess
@@ -38,13 +39,16 @@ class Chess5d(SelectionGame):
         :param save_moves: whether to save moves (useful for undoing moves); default True
 
         NOTE:
-            THE WAY WE TEST FOR CHECKMATE/STALEMATE IS THE FOLLOWING:
-                a game is terminal if current_player has no moves left, or has ended their turn in check
-                consider the beginning of current_player's turn
-                    if current_player is in check, current player has lost
-                    if current player is not in check, and there was no valid turn, it is a draw
-                    otherwise, current_player lost
-                see _terminal_eval for more explanation
+            THE WAY TO TEST FOR CHECKMATE/STALEMATE SHOULD BE THE FOLLOWING:
+                if the current player cannot advance the present with any set of moves, stalemate
+                if the current player captures opponent king:
+                    IF on the opponents last turn, there was a king in check:
+                        checkmate
+                    OTHERWISE:
+                        IF on the opponents last turn, there was no possible sequence of moves to avoid this:
+                            stalemate
+                        OTHERWISE:
+                            checkmate
 
             the reason we do this is because a 'stalemate test' is expensive
                 we have to check all possible sequences of opponent moves
@@ -67,6 +71,7 @@ class Chess5d(SelectionGame):
         self.turn_history = [[]]
         self.passed_indices = []
         self.term_ev = term_ev
+        self.full_stalemate_check = full_stalemate_check
 
     @staticmethod
     def _flip_move(move):
@@ -83,6 +88,7 @@ class Chess5d(SelectionGame):
             current_player=P.flip_player(self.current_player),
             save_moves=self.save_moves,
             term_ev=self.term_ev,
+            full_stalemate_check=self.full_stalemate_check,
         )
         out.turn_history = [[(Chess5d._flip_move(move), [-dim for dim in dims_spawned])
                              for (move, dims_spawned) in turn]
@@ -132,19 +138,20 @@ class Chess5d(SelectionGame):
         this will edit the game state to remove the piece at idx, move it to end_idx
         :return (piece captured (empty if None), terminal move)
             NOTE: terminal move does NOT check for stalemate
-            it simply checks if turn was ended in check, or if current player has no moves left
+            it simply checks if either a king was just captured, or the player has no moves left
         """
         if global_move == Chess5d.END_TURN:
-            if self.current_player_in_check():
-                # in this case, we do not make move (swap players), as this is not a valid turn
-                #   we should call _terminal_eval with current_player being current player
-                return P.EMPTY, True
-            else:
-                self._add_move_to_history(global_move)
-                self.current_player = P.flip_player(self.current_player)
-                # this is a terminal state if opponent (P.flip_player(self.current_player)) has no moves
-                # otherwise, this is non-terminal
-                return P.EMPTY, self.no_moves()
+            # TODO: if current player is in check, we terminate
+            #  roll back this turn. if current player is in check at the start, game is lost
+            #   (i.e. either checkmate or currnet player made dumb move)
+            #  otherwise, current player moved into check, must do a stalemate test to see if there was another option
+            #  Only other way to draw is if a player has no moves.
+            #   in that case, roll back turn and do another stalemate test.
+            #       if the player had a valid turn, currne player lost
+            #       otherwise, stalemate
+            self._add_move_to_history(global_move)
+            self.current_player = P.flip_player(self.current_player)
+            return P.EMPTY, self.no_moves()
 
         idx, end_idx = global_move
         time1, dim1, i1, j1 = idx
@@ -159,7 +166,6 @@ class Chess5d(SelectionGame):
                                                                       mutate=False,
                                                                       )
             if P.piece_id(piece) == P.KING:  # check for castling
-                # TODO: maybe time travel moves matter for check?
                 movement = np.max(np.abs(np.array(idx) - np.array(end_idx)))
                 if movement > 1:
                     # we have castled, move the rook as well
@@ -197,11 +203,12 @@ class Chess5d(SelectionGame):
             new_dim_two = self.add_board_child((time2, dim2), newer_board)
             dimensions_spawned.append(new_dim_two)
 
-        # this is a terminal move if player that just moved has no moves
-        # we know the player that just moved is still current_player since last move was not END_TURN
-        # if no moves left, current_player either lost or drew (see terminal_eval)
+        terminal = P.piece_id(capture) == P.KING or self.no_moves()
+
+        # this is a terminal move if we just captured the king, or if the player that just moved has no moves
+        # we know the player that just moved has the next move since the last move was not END_TURN
         self._add_move_to_history(global_move=global_move, dimensions_spawned=dimensions_spawned)
-        return capture, self.no_moves()
+        return capture, terminal
 
     def undo_move(self):
         """
@@ -647,7 +654,6 @@ class Chess5d(SelectionGame):
                 start_idx, end_idx = move
                 if time_travel == False and start_idx[:2] == end_idx[:2]:
                     # in this case, we ignore since time travel is not considered
-                    # this is weirdly the case with castling
                     continue
                 yield end_idx
 
@@ -672,7 +678,7 @@ class Chess5d(SelectionGame):
             self.multiverse.remove_board(dim)
         self.passed_indices = []
 
-    def current_player_in_check(self):
+    def present_player_in_check(self):
         """
         returns if current player is in check
 
@@ -682,9 +688,8 @@ class Chess5d(SelectionGame):
             this is consistent with the definition of check, as a capture of ANY opponent king is a win
         """
         present_player = self.player_at(self.present())
-        if self.current_player == present_player:
-            self.pass_all_present_boards()
-        for idx in self.attacked_squares(player=P.flip_player(self.current_player)):
+        self.pass_all_present_boards()
+        for idx in self.attacked_squares(player=P.flip_player(present_player)):
             if P.piece_id(self.get_piece(global_idx=idx)) == P.KING:
                 # if player_of(self.get_piece(idx=idx))==player
                 # this check is unnecessary, as opponent cannot move on top of their own king
@@ -704,17 +709,17 @@ class Chess5d(SelectionGame):
                 return True
         return False
 
-    def is_checkmate_or_stalemate(self):
+    def is_checkmate_or_stalemate(self, player=None):
         """
-        TO BE CALLED AT START OF TURN
-        or after game.undo_turn(include_boundary=False)
-
-        returns if it is (checkmate or stalemate) for currnet player
+        returns if it is (checkmate or stalemate) for specified player
+            if player is None, uses currnet player
         checks if for all possible moves of the player, the player still ends up in check
         note that this works in the case where player has no moves as well
         """
+        if player is None:
+            player = self.player_at(self.present())
 
-        for moveset in self.all_possible_turn_sets(player=self.current_player):
+        for moveset in self.all_possible_turn_sets(player=player):
             # TODO: WE DO NEED TO PERMUTE, BUT IS THERE A WAY TO DO THIS LATER?
             # FOR THE MOST PART, PERMUTATIONS SHOULD NOT HELP GETTING OUT OF CHECK
 
@@ -739,24 +744,25 @@ class Chess5d(SelectionGame):
 
     def _terminal_eval(self, mutation=False):
         """
-        to be run if game has just ended because current player has failed to end turn
-         (current player has either played END_TURN in check, or has no moves left)
+        to be run if game has just ended (king was captured, or no moves left)
 
-        in either case, we consider the posiiton at the beginning of current_player's turn
-            if the current player is in check in this position, this could mean one of the following
-                    (1a) (checkmate) there is no way to get out of check
-                    (1b) there is an unfound set of moves (valid turn) that got player out of check
-                either way, we consider this a loss for currend_player
-            if the current player is not in check, this could be one of two cases
-                    (2a) (stalemate) there is no valid set of moves such that current_player does not end turn in check
-                    (2b) there is an unfound set of moves that got player out of check
-                in this case, (2a) is a draw and we consider (2b) is a loss, since player failed to find the move
-        note that we save computation time by only computing stalemate checks
-            in case (2) (stalemate computation is expensive)
+        This during terminal evalution one of two things can happen
+            The player captures the opponent king:
+                In this case, we must undo the current player's turn and the
+                opponent's previous turn. We then inspect the game to see if this position is checkmate or stalemate
+                    (i.e. if every possible opponent turn leads to check, it is checkmate or stalemate.
+                    Otherwise, the opponent made a silly move and lost)
+                    the distinction between checkmate and stalemate is whether the opponent is in check
+                    (i.e. if the opponent makes no moves, can the current player capture the opponent king)
+            The current player has no available moves:
+                in this case, we will undo the current player's turn and check for checkmate or stalemate
+                    (i.e. if every possible player turn leads to check, it is checkmate or stalemate,
+                    and we will return a loss or tie based on if the player is in check)
+                If there was a valid turn the player did not find, we will count this as a loss for the player
 
-        This is an alternative to
+        in either case, we must undo at most two turns. Thus, the move history needs at most a record of two turns
 
-        in either case, we must undo at most one turn. Thus, the move history needs at most a record of one turn
+
 
         :param mutation: whether to let game state be mutated
         :return: (white score, black score)
@@ -766,26 +772,55 @@ class Chess5d(SelectionGame):
         else:
             game = self.clone()
 
+        last_player = game.current_player
+        opponent = P.flip_player(last_player)
+        # no_moves_left = game.no_moves(player=last_player)  # if the last player had remaining moves
+
+        last_turn = game.undo_turn(include_boundary=True)
+        king_captured = P.KING in {P.piece_id(captured) for _, captured in last_turn}
         result = [0, 0]
-        opponent = P.flip_player(self.current_player)
-
-        game.undo_turn(include_boundary=False)
-        # game is now at beginning of current_player move
-        if game.current_player_in_check():
-            # this is in case (1) above, meaning current_player lost no matter what
-            result[P.player_to_idx(opponent)] = 1
-            result[P.player_to_idx(game.current_player)] = 0
-        else:
-            # this is case (2) above
-            if game.is_checkmate_or_stalemate():
-                # (2a), since this cannot be checkmate as current player is not in check
-                result[P.player_to_idx(opponent)] = .5
-                result[P.player_to_idx(game.current_player)] = .5
+        if king_captured:
+            # here the king was captured so either the last player won or drew
+            # if the opponent (previous turn) was in check, this is a win
+            # if the opponent (previous turn) was not in check:
+            #   if there was a turn that got opponent out of check, this is a loss for opponent (win for last player)
+            #   otherwise, a draw
+            opponent_turn = game.undo_turn(include_boundary=False)
+            if game.present_player_in_check():
+                # loss for opponent, win for last player
+                result[P.player_to_idx(last_player)] = 1
+                result[P.player_to_idx(opponent)] = 0
             else:
-                # (2b)
+                if game.is_checkmate_or_stalemate(player=opponent):
+                    # opponent was not in check, and all moves led to check, so this is stalemate
+                    result[P.player_to_idx(last_player)] = .5
+                    result[P.player_to_idx(opponent)] = .5
+                else:
+                    # there was a move to get out of check, it was unfound, so opponent lost
+                    result[P.player_to_idx(last_player)] = 1
+                    result[P.player_to_idx(opponent)] = 0
+        else:
+            # if not no_moves_left:
+            #    raise Exception("TERMINAL EVAL CALLED ON NON-TERMINAL STATE")
+            # here the king was not captured, so last player must have had no moves left
+            # either a loss for last player (there was a valid turn that doesnt lead to check)
+            # or a draw (all valid turns lead to check)
+            if game.is_checkmate_or_stalemate(player=last_player):
+                # there are no valid moves to get out of check
+                if game.present_player_in_check():
+                    # if last player was in check at the start of their turn, this is a loss
+                    # since either last player is in checkmate, or last player moved into check again
+                    result[P.player_to_idx(last_player)] = 0
+                    result[P.player_to_idx(opponent)] = 1
+                else:
+                    # if there was no check, this is stalemate, so a draw
+                    result[P.player_to_idx(last_player)] = .5
+                    result[P.player_to_idx(opponent)] = .5
+            else:
+                # there was a valid sequence of moves that did not lead to check, unfound by last player
+                # thus, last player lost
+                result[P.player_to_idx(last_player)] = 0
                 result[P.player_to_idx(opponent)] = 1
-                result[P.player_to_idx(game.current_player)] = 0
-
         return tuple(result)
 
     def player_at(self, time=None):
@@ -866,6 +901,7 @@ class Chess5d(SelectionGame):
                        first_player=self.first_player,
                        save_moves=self.save_moves,
                        current_player=self.current_player,
+                       full_stalemate_check=self.full_stalemate_check
                        )
         game.turn_history = copy.deepcopy(self.turn_history)
         game._prune_history()
@@ -1026,6 +1062,7 @@ class Chess5d(SelectionGame):
                        current_player=current_player,
                        first_player=first_player,
                        term_ev=term_ev,
+                       full_stalemate_check=False,
                        )
         game.turn_history = turn_history
         return game
