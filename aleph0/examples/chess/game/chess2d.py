@@ -15,7 +15,6 @@ class Chess2d(Chess5d, FixedSizeSelectionGame):
                  initial_timeline=None,
                  current_player=P.P0,
                  first_player=P.P0,
-                 check_validity=False,
                  save_moves=True,
                  term_ev=None,
                  ):
@@ -23,7 +22,6 @@ class Chess2d(Chess5d, FixedSizeSelectionGame):
                          initial_timeline=initial_timeline,
                          current_player=current_player,
                          first_player=first_player,
-                         check_validity=check_validity,
                          save_moves=save_moves,
                          term_ev=term_ev,
                          )
@@ -51,30 +49,33 @@ class Chess2d(Chess5d, FixedSizeSelectionGame):
     def get_current_timeline(self):
         return self.multiverse.get_timeline(0)
 
-    def wrap_move(self, move, td_idx=None):
+    def wrap_move(self, chess2dmove, td_idx=None):
         if td_idx is None:
             td_idx = (self.multiverse.max_length - 1, 0)
-        idx, end_idx = move
+        idx, end_idx = chess2dmove
         return td_idx + idx, td_idx + end_idx
 
+    def wrap_idx(self, chess2didx, td_idx=None):
+        if td_idx is None:
+            td_idx = (self.multiverse.max_length - 1, 0)
+        return td_idx + chess2didx
+
+    def unwrap_idx(self, chess5didx):
+        return chess5didx[2:]
+
     def convert_to_local_idx(self, global_idx):
-        if self.current_player == P.P0:
-            return global_idx
-        else:
-            (i, j) = global_idx
-            I, J = Board.BOARD_SHAPE
-            return (I - i - 1, J - j - 1)
+        local_5d_idx = super().convert_to_local_idx(global_idx=global_idx)
+        return self.unwrap_idx(chess5didx=local_5d_idx)
 
     def convert_to_global_idx(self, local_idx):
-        # these functions are the same in this case, where we only care about range 0 to 8
-        return self.convert_to_local_idx(global_idx=local_idx)
+        local_5d_idx = self.wrap_idx(local_idx)
+        return super().convert_to_global_idx(local_idx=local_5d_idx)
 
     def flipped(self):
         out = Chess2d(
             initial_timeline=self.get_current_timeline().flipped(),
             current_player=P.flip_player(self.current_player),
             first_player=P.flip_player(self.first_player),
-            check_validity=self.check_validity,
             save_moves=self.save_moves,
             term_ev=self.term_ev,
         )
@@ -101,7 +102,6 @@ class Chess2d(Chess5d, FixedSizeSelectionGame):
 
     def clone(self):
         game = Chess2d(initial_timeline=self.get_current_timeline().clone(),
-                       check_validity=self.check_validity,
                        save_moves=self.save_moves,
                        current_player=self.current_player,
                        first_player=self.first_player,
@@ -118,42 +118,16 @@ class Chess2d(Chess5d, FixedSizeSelectionGame):
             game = self
         print(game.get_current_board().__str__())
 
-    def get_valid_next_selections(self, move_prefix=()):
-        """
-        gets valid choices for next index to select
-            MUST BE DETERMINISTIC
-            moves must always be returned in the same order
-        Args:
-            move_prefix: indices selected so far, must be less than self.subsetsize
-        Returns:
-            iterable of N tuples indicating which additions are valid
-        """
-        if move_prefix == ():
-            board = self.get_current_board()
-            for (i, j) in board.pieces_of(self.current_player):
-                yield self.convert_to_local_idx((i, j))
-        else:
-            local_idx, = move_prefix
-            global_idx = (self.multiverse.max_length - 1, 0) + self.convert_to_local_idx(local_idx)
-            for end_idx in self._piece_possible_moves(global_idx=global_idx, castling=True):
-                yield self.convert_to_local_idx(end_idx[2:])
-
-    def valid_special_moves(self):
-        """
-        returns iterable of special moves possible from current position
-        MUST BE DETERMINISTIC, always return moves in same order
-        Returns: boolean
-        """
-        return iter(())
 
     def make_move(self, local_move):
         out = self.clone()
         global_move = self.convert_to_global_move(local_move)
-        global_move = self.wrap_move(global_move)
         capture, terminal = out._mutate_make_move(global_move)
 
         if terminal:
             out.term_ev = out._terminal_eval(mutation=False)
+        elif out.material_draw():
+            out.term_ev = (.5, .5)  # draw by lack of mating material
         else:
             # only do this if non terminal
             out._mutate_make_move(Chess2d.END_TURN)
@@ -285,6 +259,7 @@ class Chess2d(Chess5d, FixedSizeSelectionGame):
                        )
         game.turn_history = turn_history
         return game
+
 
 if __name__ == '__main__':
     from aleph0.algs import Human, play_game

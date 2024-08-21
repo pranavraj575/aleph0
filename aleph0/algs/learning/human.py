@@ -22,11 +22,14 @@ class Human(Algorithm):
         while True:
             game.render()
             print('current player', game.current_player)
-            selection_next_choices = [choice
-                                      for choice in game.get_valid_next_selections(move_prefix=move_prefix)
-                                      if
-                                      move_prefix + (choice,) in [mv[:len(move_prefix) + 1] for mv in selection_moves]
-                                      ]
+            temp = [select_move[len(move_prefix)]
+                    for select_move in selection_moves
+                    if move_prefix == select_move[:len(move_prefix)]
+                    ]
+            selection_next_choices = []
+            for item in temp:
+                if item not in selection_next_choices:
+                    selection_next_choices.append(item)
             if move_prefix:
                 all_choices = selection_next_choices
             else:

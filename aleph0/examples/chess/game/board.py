@@ -106,6 +106,7 @@ class Board:
 
     def pieces_of(self, player):
         """
+        WILL ALWAYS RETURN PIECES IN SAME ORDER
         returns iterable of pieces of specified player
         :param player: player
         :return: iterable of (i,j)

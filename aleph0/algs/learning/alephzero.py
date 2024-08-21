@@ -53,7 +53,6 @@ class AlephZero(Algorithm):
     def save(self, save_dir):
         # save this separately from info
         epoch_infos = self.info.pop('epoch_infos')
-        super().save(save_dir=save_dir)
         if epoch_infos:
             epoch_info_save_dir = os.path.join(save_dir, 'epoch_infos')
             if 'epoch_info_save_dir' in self.info and self.info['epoch_info_save_dir'] != epoch_info_save_dir:
@@ -70,6 +69,8 @@ class AlephZero(Algorithm):
             pickle.dump(epoch_infos, f)
             f.close()
             self.info['epoch_info_save_dir'] = epoch_info_save_dir
+
+        super().save(save_dir=save_dir)
         self.info['epoch_infos'] = []
         dic = {
             'model': self.network.state_dict(),

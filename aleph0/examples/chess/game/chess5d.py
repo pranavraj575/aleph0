@@ -22,7 +22,6 @@ class Chess5d(SelectionGame):
                  initial_board=None,
                  current_player=P.P0,
                  first_player=P.P0,
-                 check_validity=False,
                  save_moves=True,
                  term_ev=None,
                  ):
@@ -65,7 +64,6 @@ class Chess5d(SelectionGame):
                     initial_board = Board()
                 initial_timeline = Timeline(board_list=[initial_board])
             initial_multiverse = Multiverse(main_timeline=initial_timeline)
-        self.check_validity = check_validity
         self.save_moves = save_moves
         self.multiverse = initial_multiverse
         self.first_player = first_player
@@ -86,7 +84,6 @@ class Chess5d(SelectionGame):
             initial_multiverse=self.multiverse.flipped(),
             first_player=P.flip_player(self.first_player),
             current_player=P.flip_player(self.current_player),
-            check_validity=self.check_validity,
             save_moves=self.save_moves,
             term_ev=self.term_ev,
         )
@@ -140,18 +137,12 @@ class Chess5d(SelectionGame):
             NOTE: terminal move does NOT check for stalemate
             it simply checks if either a king was just captured, or the player has no moves left
         """
-
         if global_move == Chess5d.END_TURN:
             self._add_move_to_history(global_move)
             self.current_player = P.flip_player(self.current_player)
-            return P.EMPTY, self.no_moves(player=self.player_at(self.present()))
+            return P.EMPTY, self.no_moves()
 
         idx, end_idx = global_move
-        if self.check_validity:
-            if not self.board_can_be_moved(idx[:2]):
-                raise Exception("WARNING MOVE MADE ON INVALID BOARD: " + str(idx[:2]))
-            if end_idx not in list(self._piece_possible_moves(idx)):
-                raise Exception("WARNING INVALID MOVE: " + str(idx) + ' -> ' + str(end_idx))
         time1, dim1, i1, j1 = idx
         time2, dim2, i2, j2 = end_idx
         old_board = self.get_board((time1, dim1))
@@ -200,7 +191,8 @@ class Chess5d(SelectionGame):
             newer_board.mutate_depassant(just_moved=None)
             new_dim_two = self.add_board_child((time2, dim2), newer_board)
             dimensions_spawned.append(new_dim_two)
-        terminal = P.piece_id(capture) == P.KING or self.no_moves(player=self.current_player)
+
+        terminal = P.piece_id(capture) == P.KING or self.no_moves()
 
         # this is a terminal move if we just captured the king, or if the player that just moved has no moves
         # we know the player that just moved has the next move since the last move was not END_TURN
@@ -451,22 +443,30 @@ class Chess5d(SelectionGame):
             for end_idx in self._piece_possible_moves(idx, castling=castling):
                 yield idx, end_idx
 
-    def _all_possible_moves(self, player=None, castling=True):
+    def _all_possible_selection_moves(self, player, castling=True):
         """
         returns an iterable of all possible moves of the specified player
         if player is None, uses the first player that needs to move
-        None is included if the player does not NEED to move
+        if the opponent is in check, the player MUST capture the king
 
         WILL ALWAYS RETURN MOVES IN SAME ORDER
         """
         if player is None:
             player = self.player_at(time=self.present())
-        if self.player_at(time=self.present()) != player:
-            # the player does not have to move
-            yield Chess5d.END_TURN
+        in_check = False
+        all_moves = []
         for td_idx in self._players_boards_with_possible_moves(player=player):
-            for move in self._board_all_possible_moves(global_td_idx=td_idx, castling=castling):
-                yield move
+            for global_move in self._board_all_possible_moves(global_td_idx=td_idx, castling=castling):
+                index, end_idx = global_move
+                if P.piece_id(self.get_piece(end_idx)) == P.KING:
+                    in_check = True
+                    yield global_move
+                if not in_check:
+                    all_moves.append(global_move)
+        # if there are no check moves, just go through all possible moves
+        if not in_check:
+            for global_move in all_moves:
+                yield global_move
 
     def _all_possible_turn_subsets(self, player=None):
         """
@@ -620,13 +620,13 @@ class Chess5d(SelectionGame):
             if success:
                 yield moves
 
-    def no_moves(self, player):
+    def no_moves(self):
         """
         returns if no possible moves
         """
         try:
             # why is there no better way to check if a generator is empty
-            next(self._all_possible_moves(player=player))
+            next(self.get_all_valid_moves())
             return False
         except StopIteration:
             return True
@@ -638,7 +638,7 @@ class Chess5d(SelectionGame):
         """
         # we do not want castling as you cannot capture a piece with that
         # this also causes an infinite loop, as to check for castling, we must use this method
-        for move in self._all_possible_moves(player=player, castling=False):
+        for move in self._all_possible_selection_moves(player=player, castling=False):
             if move != Chess5d.END_TURN:
                 start_idx, end_idx = move
                 if time_travel == False and start_idx[:2] == end_idx[:2]:
@@ -888,7 +888,6 @@ class Chess5d(SelectionGame):
     def clone(self):
         game = Chess5d(initial_multiverse=self.multiverse.clone(),
                        first_player=self.first_player,
-                       check_validity=self.check_validity,
                        save_moves=self.save_moves,
                        current_player=self.current_player,
                        )
@@ -909,26 +908,17 @@ class Chess5d(SelectionGame):
 
         return tuple((time_len, dimensions, I, J) for _ in range(4)), (time_len, dimensions, I, J, 4), (0,)
 
-    def get_valid_next_selections(self, move_prefix=()):
+    def valid_selection_moves(self, move_prefix=()):
         """
-        gets valid choices for next index to select
-            MUST BE DETERMINISTIC
-            moves must always be returned in the same order
+        gets all possible moves
         Args:
-            move_prefix: indices selected so far, must be less than self.subsetsize
+            move_prefix: moves selected so far,
         Returns:
-            iterable of N tuples indicating which additions are valid
+            iterable of (self.subset_size tuples of N tuples)
         """
-        if move_prefix == ():
-            for (t, d) in self._players_boards_with_possible_moves(player=self.current_player):
-                board = self.get_board(global_td_idx=(t, d))
-                for (i, j) in board.pieces_of(self.player_at(t)):
-                    yield self.convert_to_local_idx((t, d, i, j))
-        else:
-            local_idx, = move_prefix
-            global_idx = self.convert_to_global_idx(local_idx)
-            for end_idx in self._piece_possible_moves(global_idx=global_idx, castling=True):
-                yield self.convert_to_local_idx(end_idx)
+        for global_move in self._all_possible_selection_moves(player=self.current_player, castling=True):
+            yield self.convert_to_local_move(global_move=global_move)
+
 
     def valid_special_moves(self):
         """

@@ -56,8 +56,11 @@ class SelectionGame:
         self.special_moves = special_moves
         self.num_players = num_players
 
+    #### must define at least one of the following two
+    ### usually get_valid_next_selections is easiest, but can also just directly define valid_selection_moves
     def get_valid_next_selections(self, move_prefix=()):
         """
+        NEVER USED OUTSIDE OF valid_selection_moves
         gets valid choices for next index to select
             INDICES ARE INDICES INTO THE OBS ARRAY RETURNED
             MUST BE DETERMINISTIC
@@ -68,6 +71,22 @@ class SelectionGame:
             iterable of N tuples indicating which additions are valid
         """
         raise NotImplementedError
+
+    def valid_selection_moves(self, move_prefix=()):
+        """
+        gets all possible moves
+        Args:
+            move_prefix: moves selected so far,
+        Returns:
+            iterable of (self.subset_size tuples of N tuples)
+        """
+        if len(move_prefix) == self.selection_size:
+            yield move_prefix
+        else:
+            for next_move in self.get_valid_next_selections(move_prefix=move_prefix):
+                new_prefix = move_prefix + (next_move,)
+                for valid_move in self.valid_selection_moves(move_prefix=new_prefix):
+                    yield valid_move
 
     def valid_special_moves(self):
         """
@@ -224,22 +243,6 @@ class SelectionGame:
 
     def clone(self):
         return self.from_representation(self.representation)
-
-    def valid_selection_moves(self, move_prefix=()):
-        """
-        gets all possible moves
-        Args:
-            move_prefix: moves selected so far,
-        Returns:
-            iterable of (self.subset_size tuples of N tuples)
-        """
-        if len(move_prefix) == self.selection_size:
-            yield move_prefix
-        else:
-            for next_move in self.get_valid_next_selections(move_prefix=move_prefix):
-                new_prefix = move_prefix + (next_move,)
-                for valid_move in self.valid_selection_moves(move_prefix=new_prefix):
-                    yield valid_move
 
     def get_all_valid_moves(self):
         """
