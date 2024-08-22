@@ -72,21 +72,24 @@ class SelectionGame:
         """
         raise NotImplementedError
 
-    def valid_selection_moves(self, move_prefix=()):
+    def valid_selection_moves(self):
         """
         gets all possible moves
-        Args:
-            move_prefix: moves selected so far,
         Returns:
             iterable of (self.subset_size tuples of N tuples)
         """
-        if len(move_prefix) == self.selection_size:
-            yield move_prefix
-        else:
-            for next_move in self.get_valid_next_selections(move_prefix=move_prefix):
-                new_prefix = move_prefix + (next_move,)
-                for valid_move in self.valid_selection_moves(move_prefix=new_prefix):
-                    yield valid_move
+
+        def HELP_MEEEE(move_prefix=()):
+            if len(move_prefix) == self.selection_size:
+                yield move_prefix
+            else:
+                for next_move in self.get_valid_next_selections(move_prefix=move_prefix):
+                    new_prefix = move_prefix + (next_move,)
+                    for valid_move in HELP_MEEEE(move_prefix=new_prefix):
+                        yield valid_move
+
+        for move in HELP_MEEEE():
+            yield move
 
     def valid_special_moves(self):
         """

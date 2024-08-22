@@ -2,7 +2,7 @@
 name = "aleph0"
 version = "0.0.10000169"
 authors = [
-  { name="Pranav", email="pranavraj575@gmail.com" },
+    { name = "Pranav", email = "pranavraj575@gmail.com" },
 ]
 description = "alphazero implemented for games with state/action spaces a finite subset of a countable space"
 readme = "README.md"
@@ -18,7 +18,8 @@ dependencies = [
 ]
 [project.optional-dependencies]
 jenga = [
-    'scipy'
+    'scipy',
+    'matplotlib'
 ]
 
 [project.urls]
@@ -27,4 +28,4 @@ Homepage = "https://github.com/pranavraj575/aleph0"
 [tool.coverage.run]
 omit = [
     "aleph0/tests",
-    ]
+]

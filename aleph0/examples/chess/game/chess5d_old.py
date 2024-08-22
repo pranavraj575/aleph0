@@ -920,11 +920,9 @@ class Chess5d(SelectionGame):
 
         return tuple((time_len, dimensions, I, J) for _ in range(4)), (time_len, dimensions, I, J, 4), (0,)
 
-    def valid_selection_moves(self, move_prefix=()):
+    def valid_selection_moves(self):
         """
         gets all possible moves
-        Args:
-            move_prefix: moves selected so far,
         Returns:
             iterable of (self.subset_size tuples of N tuples)
         """

@@ -3,10 +3,12 @@ contains Tower class
 encodes a tower, has helpful methods to get state, as well as make moves
 """
 from scipy.spatial import ConvexHull
-import numpy as np
 import torch, copy
+import numpy as np
+import matplotlib.pyplot as plt
 
 from aleph0.game import SelectionGame
+from aleph0.examples.jenga.game.block import Block
 
 TOLERANCE = 1e-10
 
@@ -70,130 +72,7 @@ def hull_score(point, hull, tolerance=TOLERANCE):
         return np.min(point_dists)
 
 
-class Block:
-    STD_BLOCK_DIM = np.array((.075, .025, .015))  # in meters
-    STD_BLOCK_SPACING = .005  # in meters
-
-    STD_WOOD_DENSITY = 0.5  # kg/m^3
-
-    def __init__(self,
-                 pos,
-                 yaw=0.,
-                 block_dim=None,
-                 density=None,
-                 ):
-        """
-        represents one block
-        :param pos: position, np array
-        :param yaw: represents orientation
-
-        Note: generally, roll and pitch are 0 and yaw is the only relevant one
-        """
-        self.pos = pos
-        self.yaw = yaw
-        if block_dim is None:
-            block_dim = Block.STD_BLOCK_DIM
-        if density is None:
-            density = Block.STD_WOOD_DENSITY
-        self.block_dim = block_dim
-        self.density = density
-        self.mass = np.prod(self.block_dim)*self.density
-
-    @staticmethod
-    def vector_size():
-        return 3 + 3 + 2
-
-    @property
-    def representation(self):
-        """
-        returns block encoded as a vector
-
-        x,y,z,angle
-        """
-        return np.concatenate((self.pos, self.block_dim, [self.yaw, self.density]))
-
-    @staticmethod
-    def from_representation(representation):
-        pos = representation[:3]
-        block_dim = representation[3:6]
-        yaw, density = representation[6:]
-        return Block(pos=pos,
-                     yaw=yaw,
-                     block_dim=block_dim,
-                     density=density,
-                     )
-
-    def vertices(self):
-        """
-        returns vertices of block
-        :return: 8x3 array
-        """
-
-        dx, dy, dz = self.block_dim
-
-        return np.array([[
-            (X,
-             Y,
-             self.pos[2] + dz*(z_i - .5),
-             )
-            for (X, Y) in self.vertices_xy()] for z_i in range(2)]).reshape((8, 3))
-
-    def vertices_xy(self):
-        """
-        returns xy projected vertices of block
-        ordered in a cycle
-        :return: 4x2 array
-        """
-        dx, dy, _ = self.block_dim
-        return self.pos[:2] + np.array([[
-            (dx*(x_i - .5)*np.cos(self.yaw) - dy*(y_i - .5)*np.sin(self.yaw),
-             dx*(x_i - .5)*np.sin(self.yaw) + dy*(y_i - .5)*np.cos(self.yaw),
-             )
-            for x_i in (range(2) if y_i == 0 else range(1, -1, -1))]  # go in reverse for y_i=1
-            for y_i in range(2)]).reshape((4, 2))
-
-    def com(self):
-        """
-        :return: np array, center of mass (is just pos)
-        """
-        return self.pos
-
-    def __eq__(self, other):
-        return (np.array_equal(self.pos, other.pos) and
-                self.yaw == other.yaw and
-                np.array_equal(self.block_dim, other.block_dim) and
-                self.density == other.density)
-
-    @staticmethod
-    def random_block(L, i, pos_std=0., angle_std=0.):
-        """
-        creates a randomly placed block at specified level and index
-        :param L: level of block in tower
-        :param i: index of block in level (increases +x for even levels, +y for odd levels)
-            0 is the furthest negative, 2 is the furthest positive
-        :param pos_std: std randomness of position
-        :param angle_std: std randomness of angle
-        :return: block object
-        """
-
-        rot = (L%2)*np.pi/2  # rotate yaw if odd level
-
-        pos = np.zeros(3)
-        pos += (0, 0, (L + 0.5)*Block.STD_BLOCK_DIM[2])  # height of level + half the height of a block (since COM)
-
-        width = Block.STD_BLOCK_DIM[1]
-        if L%2:
-            pos += ((i - 1)*(width + Block.STD_BLOCK_SPACING), 0, 0)
-        else:
-            pos += (0, (i - 1)*(width + Block.STD_BLOCK_SPACING), 0)
-
-        rot = rot + np.random.normal(0, angle_std)
-        pos = pos + (np.random.normal(0, pos_std), np.random.normal(0, pos_std), 0.)
-
-        return Block(pos=pos, yaw=rot)
-
-
-class Jenga(SelectionGame):
+class Genga(SelectionGame):
     """
     jenga tower representation
     list of layers, each layer is a list of three booleans
@@ -201,7 +80,7 @@ class Jenga(SelectionGame):
         all methods like "remove_block" create a new instance of the class
     """
     EMPTY = 0
-    BLOCK = 1
+    FILLED = 1
     PLACABLE = 2
 
     TOWER_DIAMETER = 2*Block.STD_BLOCK_SPACING + 3*Block.STD_BLOCK_DIM[1]  # theoretical size of a layer
@@ -209,6 +88,7 @@ class Jenga(SelectionGame):
     DEFAULT_INITIAL_SIZE = 5  # number of levels in initial tower
 
     def __init__(self,
+                 subset_size,
                  num_players=2,
                  current_player=0,
                  block_info=None,
@@ -216,15 +96,18 @@ class Jenga(SelectionGame):
                  angle_std=.003,
                  fallen=False,
                  initial_size=DEFAULT_INITIAL_SIZE,
+                 render_mode='pyplot',
                  ):
         """
-        :param block_info: list of block triples, represents each layer
-        :param pos_std: stdev to use for positions if randomly initializing/randomly placing
-        :param angle_std: stdev to use for angles if randomly initializing/randomly placing
+        Args:
+            block_info: list of block triples, represents each layer
+            pos_std: stdev to use for positions if randomly initializing/randomly placing
+            angle_std: stdev to use for angles if randomly initializing/randomly placing
+            render_mode: 'pyplot' or 'str', how to render tower
         """
         super().__init__(num_players=num_players,
                          current_player=current_player,
-                         subset_size=2,
+                         subset_size=subset_size,
                          special_moves=[],
                          )
 
@@ -241,6 +124,7 @@ class Jenga(SelectionGame):
         # compute all of these
         self.update_info()
         self.fallen = fallen
+        self.render_mode = render_mode
 
     def set_fallen(self, log_prob_stable):
         prob = np.exp(log_prob_stable)
@@ -270,12 +154,275 @@ class Jenga(SelectionGame):
             self.Ns.append(N)
             self.COMs.append(MOMENT/MASS)
 
-            V = np.concatenate([t.vertices_xy() for t in layer if t is not None], axis=0)
+            V = np.concatenate([t.vertices_xy().reshape((4, 2)) for t in layer if t is not None], axis=0)
             self.hulls.append(ConvexHull(V))
 
         self.Ns.reverse()
         self.COMs.reverse()
         self.hulls.reverse()
+
+    def blocks_on_level(self, L):
+        """
+        returns blocks on level L
+        :param L: level
+        :return: int
+        """
+        if (L == self.height - 1) or (L == -1):
+            return self.Ns[-1]
+        return self.Ns[L] - self.Ns[L + 1]
+
+    @property
+    def height(self):
+        """
+        :return: height of tower
+        """
+        return len(self.block_info)
+
+    def com(self):
+        """
+        center of mass of tower
+        :return: np array
+        """
+        return self.COMs[0]
+
+    def top_layer_filled(self):
+        """
+        returns if top layer is filled
+        """
+        return self.blocks_on_level(self.height - 1) == 3
+
+    # FALLING/TERMINAL CHECKS
+
+    def log_prob_stable(self, scale=.001):
+        """
+        computes log of probability that tower is stable
+            sum across layers
+                (equivalent to just multiplying the probabilities)
+            could also try min across layers
+                (equivalent to probability that the least stable layer is stable)
+        :return: log(prob)
+        """
+        return sum(self.log_prob_stable_at_layer(L, scale=scale) for L in range(self.height - 1))
+
+    def log_prob_stable_at_layer(self, L, scale=.0005):
+        """
+        computes log of probability that tower is stable at layer L
+            probability is calculated by sigmoid of signed distance from the convex hull
+            scaled by some value so that
+        :param L: layer of tower (must be < self.height-1)
+        :return: log(prob)
+        """
+        return -np.log(1 + np.exp(self.raw_score_at_layer(L)/scale))
+
+    def raw_score_at_layer(self, L):
+        """
+        computes the signed distance from COM at layer L+1 to the convex hull of layer L. Can be thought of as an un-normalized score
+        :param L: layer of tower (must be < self.height-1)
+        :return: -1 * the signed distance from the projection of the convex hull at layer L+1 to the convex hull of layer L
+        """
+        hull = self.hulls[L]
+        com = self.COMs[L + 1][:2]
+        return hull_score(com, hull)
+
+    # VALIDITY CHECKS
+    def no_valid_removes(self):
+        for L in range(self.height - 2 + self.top_layer_filled()):
+            if self.blocks_on_level(L) > 1:
+                return False
+        return True
+
+    def valid_removes(self):
+        """
+        returns list of all (L,i) pairs that are allowed to be removed
+        """
+        for L in range(self.height - 2 + self.top_layer_filled()):
+            if self.blocks_on_level(L) > 1:
+                for (i, t) in enumerate(self.block_info[L]):
+                    if t is not None:
+                        yield (L, i)
+
+    def valid_place_blocks(self):
+        """
+        returns the valid 'moves' to place a block on tower
+        :return: non-empty list of indices
+        """
+        if self.top_layer_filled():
+            for i in range(3):
+                yield (self.height, i)
+        else:
+            for i in range(3):
+                if self.block_info[-1][i] is None:
+                    yield (self.height - 1, i)
+
+    def valid_moves_product(self):
+        """
+        returns all valid next moves
+        :return: (all possible 'remove' steps, all possible 'place' steps)
+            Note that any choice from these is a valid next move
+        """
+        removes = list(self.valid_removes())
+        # Note: removing a block does not change the top layer
+        # thus, the possible placement moves remain constant after removing a block
+        places = list(self.valid_place_blocks())
+        return (removes, places)
+
+    # GAME MOVE METHODS (RETURNS MUTATED TOWER)
+
+    def blockinfo_remove_block(self, remove):
+        """
+        removes specified block
+        :param remove: (L,i) tuple
+            L: level of block
+            i: index of block
+        :return: Tower object with specified block removed
+        """
+        L, i = remove
+        bi = copy.deepcopy(self.block_info)
+        return [
+            [(None if eye == i and ell == L else block) for (eye, block) in enumerate(level)]
+            for (ell, level) in enumerate(bi)]
+
+    def blockinfo_place_block(self, place, blk_pos_std=None, blk_angle_std=None):
+        """
+        places block at specified position
+        :param place: position to add block into
+        :param blk_pos_std: pos stdev, if different from default
+        :param blk_angle_std: angle stdev, if different from default
+        :return: Tower with block added
+        """
+        _, i = place
+        if blk_pos_std is None:
+            blk_pos_std = self.pos_std
+        if blk_angle_std is None:
+            blk_angle_std = self.angle_std
+        if self.top_layer_filled():
+            new_block = Block.random_block(L=self.height, i=i, pos_std=blk_pos_std, angle_std=blk_angle_std)
+            return copy.deepcopy(self.block_info) + [[(new_block if eye == i else None) for eye in range(3)]]
+        else:
+            new_block = Block.random_block(L=self.height - 1, i=i, pos_std=blk_pos_std, angle_std=blk_angle_std)
+            bi = copy.deepcopy(self.block_info)
+            return [
+                [(new_block if eye == i and L == self.height - 1 else block) for (eye, block) in enumerate(level)]
+                for (L, level) in enumerate(bi)]
+
+    @staticmethod
+    def local_to_global_idx(idx):
+        L, I = idx
+        return L, I + 1
+
+    def get_indices(self):
+        H = self.height + self.top_layer_filled()
+        Ht = torch.stack((torch.arange(H).view(-1, 1),
+                          torch.zeros((H, 1)),
+                          ), dim=-1)
+        Wt = torch.stack((torch.zeros((1, 3)),
+                          torch.arange(3).view(1, -1) - 1,  # recenter around 0
+                          ), dim=-1)
+        return Ht + Wt
+
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+    # ASS METHODS                                                                           #
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+    @property
+    def observation(self):
+        H = self.height + self.top_layer_filled()
+        ident = torch.ones((H, 3), dtype=torch.long)*Jenga.EMPTY
+
+        parity = torch.arange(H)%2
+        parity = parity.view(H, 1).broadcast_to(H, 3)
+
+        blocks = torch.zeros((H, 3, Block.vector_size()))
+        ident[-1] = Jenga.PLACABLE
+        for L, layer in enumerate(self.block_info):
+            for i, t in enumerate(layer):
+                if t is not None:
+                    ident[L, i] = Jenga.FILLED
+                    blocks[L, i] = torch.tensor(t.representation)
+
+        return (ident, parity, blocks,), self.get_indices(), torch.zeros(0)
+
+    @staticmethod
+    def num_observation_boards():
+        """
+        Returns: number of boards in (D1,...,DN, *1),(D1,...,DN, *2),...)
+        """
+        return 3
+
+    @staticmethod
+    def underlying_set_sizes():
+        """
+        returns number of possible distinct elements of each underlying set, if finite
+        """
+        return [3, 2, None]
+
+    @property
+    def permutation_to_standard_pos(self):
+        # permutation[current_player] should be 0, as the network should assume current player is 0
+        # every other player is in the same order
+        return [(i - self.current_player)%self.num_players for i in range(self.num_players)]
+
+    def valid_special_moves(self):
+        return iter(())
+
+    def __eq__(self, other):
+        return self.block_info == other.block_info
+
+    def __str__(self):
+        """
+        returns string representation of tower
+        binary encoding of each level
+        i.e. full layer is a 7, layer with one block is a 1, 2, or 4 depending on which block
+        blocks are indexed from -x to +x (even layers) or -y to +y (odd layers)
+        """
+        s = ''
+        for L in self.block_info:
+            s_L = 0
+            for (i, t) in enumerate(L):
+                if t is not None:
+                    s_L += int(2**i)
+            s += str(s_L)
+        return s
+
+    def render_str(self):
+        print(self.__str__())
+
+    def render_pyplot(self):
+        raise NotImplementedError
+
+    def render(self):
+        if self.render_mode == 'pyplot':
+            self.render_pyplot()
+        else:
+            self.render_str()
+
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+    # outdated methods                                                                      #
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+    def image_of_layer(self, L, resolution=256, radius=None):
+        """
+        returns an 'image' of density of a layer
+        array of 0s or 1s, 1 if there is a block at a point
+
+        :param L: layer of tower
+        :param resolution: granularity of the image
+        :param radius: distance to look on each dimension
+            looks at [-radius,radius]^2
+
+        returns an (resolution x resolution) numpy array 'image'
+        """
+        if radius is None:
+            radius = 1.2*Jenga.TOWER_DIAMETER/2
+        grid = (np.arange(resolution)/(resolution - 1) - .5)*2*radius
+        xv, yv = np.meshgrid(grid, grid, indexing='xy')
+        points_arr = np.stack((xv, yv), axis=2)
+        points_arr = points_arr.reshape((resolution*resolution, 2))
+
+        thingies = np.sum(
+            [which_points_in_hull(points_arr, hull, tolerance=TOLERANCE) for hull in self.get_block_hulls()[L]], axis=0)
+
+        return thingies.reshape((resolution, resolution))
 
     def update_special_info(self):
         """
@@ -283,10 +430,9 @@ class Jenga(SelectionGame):
         """
         self.block_hulls = []
         for layer in self.block_info:
-            hull_layer = [ConvexHull(t.vertices_xy()) for t in layer if t is not None]
+            hull_layer = [ConvexHull(t.vertices_xy().reshape((4, 2))) for t in layer if t is not None]
             self.block_hulls.append(hull_layer)
 
-    # ACCESS METHODS
     def get_block_hulls(self):
         if self.block_hulls is None:
             self.update_special_info()
@@ -300,16 +446,6 @@ class Jenga(SelectionGame):
         :return: number of blocks
         """
         return self.Ns[0]
-
-    def blocks_on_level(self, L):
-        """
-        returns blocks on level L
-        :param L: level
-        :return: int
-        """
-        if (L == self.height - 1) or (L == -1):
-            return self.Ns[-1]
-        return self.Ns[L] - self.Ns[L + 1]
 
     def free_valid_moves(self):
         """
@@ -355,261 +491,43 @@ class Jenga(SelectionGame):
                     layer_counts[1] += 1
         return layer_counts
 
-    @property
-    def height(self):
-        """
-        :return: height of tower
-        """
-        return len(self.block_info)
 
-    def com(self):
-        """
-        center of mass of tower
-        :return: np array
-        """
-        return self.COMs[0]
-
-    def top_layer_filled(self):
-        """
-        returns if top layer is filled
-        """
-        return self.blocks_on_level(self.height - 1) == 3
-
-    def image_of_layer(self, L, resolution=256, radius=None):
-        """
-        returns an 'image' of density of a layer
-        array of 0s or 1s, 1 if there is a block at a point
-
-        :param L: layer of tower
-        :param resolution: granularity of the image
-        :param radius: distance to look on each dimension
-            looks at [-radius,radius]^2
-
-        returns an (resolution x resolution) numpy array 'image'
-        """
-        if radius is None:
-            radius = 1.2*Jenga.TOWER_DIAMETER/2
-        grid = (np.arange(resolution)/(resolution - 1) - .5)*2*radius
-        xv, yv = np.meshgrid(grid, grid, indexing='xy')
-        points_arr = np.stack((xv, yv), axis=2)
-        points_arr = points_arr.reshape((resolution*resolution, 2))
-
-        thingies = np.sum(
-            [which_points_in_hull(points_arr, hull, tolerance=TOLERANCE) for hull in self.get_block_hulls()[L]], axis=0)
-
-        return thingies.reshape((resolution, resolution))
-
-    # FALLING/TERMINAL CHECKS
-
-    def log_prob_stable(self, scale=.001):
-        """
-        computes log of probability that tower is stable
-            sum across layers
-                (equivalent to just multiplying the probabilities)
-            could also try min across layers
-                (equivalent to probability that the least stable layer is stable)
-        :return: log(prob)
-        """
-        return sum(self.log_prob_stable_at_layer(L, scale=scale) for L in range(self.height - 1))
-
-    def log_prob_stable_at_layer(self, L, scale=.0005):
-        """
-        computes log of probability that tower is stable at layer L
-            probability is calculated by sigmoid of signed distance from the convex hull
-            scaled by some value so that
-        :param L: layer of tower (must be < self.height-1)
-        :return: log(prob)
-        """
-        return -np.log(1 + np.exp(self.raw_score_at_layer(L)/scale))
-
-    def raw_score_at_layer(self, L):
-        """
-        computes the signed distance from COM at layer L+1 to the convex hull of layer L. Can be thought of as an un-normalized score
-        :param L: layer of tower (must be < self.height-1)
-        :return: -1 * the signed distance from the projection of the convex hull at layer L+1 to the convex hull of layer L
-        """
-        hull = self.hulls[L]
-        com = self.COMs[L + 1][:2]
-        return hull_score(com, hull)
-
-    # VALIDITY CHECKS
-
-    def valid_removes(self):
-        """
-        returns list of all (L,i) pairs that are allowed to be removed
-        """
-        return list(self.get_valid_next_selections(move_prefix=()))
-
-    def valid_place_blocks(self):
-        """
-        returns the valid 'moves' to place a block on tower
-        :return: non-empty list of indices
-        """
-        return list(self.get_valid_next_selections(move_prefix=('temp')))
-
-    def valid_moves_product(self):
-        """
-        returns all valid next moves
-        :return: (all possible 'remove' steps, all possible 'place' steps)
-            Note that any choice from these is a valid next move
-        """
-        removes = self.valid_removes()
-        # Note: removing a block does not change the top layer
-        # thus, the possible placement moves remain constant after removing a block
-        places = self.valid_place_blocks()
-        return (removes, places)
-
-    # GAME MOVE METHODS (RETURNS MUTATED TOWER)
-
-    def remove_block(self, remove):
-        """
-        removes specified block
-        :param remove: (L,i) tuple
-            L: level of block
-            i: index of block
-        :return: Tower object with specified block removed
-        """
-        L, i = remove
-        return Jenga(
-            block_info=[
-                [(None if eye == i and ell == L else block) for (eye, block) in enumerate(level)]
-                for (ell, level) in enumerate(self.block_info)],
-            pos_std=self.pos_std,
-            angle_std=self.angle_std,
-        )
-
-    def place_block(self, idx, blk_pos_std=None, blk_angle_std=None):
-        """
-        places block at specified position
-        :param i: position to add
-        :param blk_pos_std: pos stdev, if different from default
-        :param blk_angle_std: angle stdev, if different from default
-        :return: Tower with block added
-        """
-        _, i = idx
-        if blk_pos_std is None:
-            blk_pos_std = self.pos_std
-        if blk_angle_std is None:
-            blk_angle_std = self.angle_std
-        if self.top_layer_filled():
-            new_block = Block.random_block(L=self.height, i=i, pos_std=blk_pos_std, angle_std=blk_angle_std)
-            return Jenga(block_info=self.block_info + [[(new_block if eye == i else None) for eye in range(3)]],
-                         pos_std=self.pos_std,
-                         angle_std=self.angle_std,
+class Jenga(Genga):
+    def __init__(self,
+                 num_players=2,
+                 current_player=0,
+                 block_info=None,
+                 pos_std=.001,
+                 angle_std=.003,
+                 fallen=False,
+                 initial_size=Genga.DEFAULT_INITIAL_SIZE,
+                 render_mode='pyplot',
+                 ):
+        super().__init__(subset_size=2,
+                         num_players=num_players,
+                         current_player=current_player,
+                         block_info=block_info,
+                         pos_std=pos_std,
+                         angle_std=angle_std,
+                         fallen=fallen,
+                         initial_size=initial_size,
+                         render_mode=render_mode,
                          )
-        else:
-            new_block = Block.random_block(L=self.height - 1, i=i, pos_std=blk_pos_std, angle_std=blk_angle_std)
-            return Jenga(
-                block_info=[
-                    [(new_block if eye == i and L == self.height - 1 else block) for (eye, block) in enumerate(level)]
-                    for (L, level) in enumerate(self.block_info)],
-                pos_std=self.pos_std,
-                angle_std=self.angle_std,
-            )
-
-    def play_move_log_probabilistic(self, remove, place):
-        """
-        :param remove: (L,i) tuple, remove ith block from Lth level
-        :param place: index of place action
-        :return: (Tower object with specified action taken, log prob of tower being stable)
-        note: remove must be in removes and place in places for (removes,places)=self.valid_moves()
-        """
-        removed = self.remove_block(remove)
-        placed = removed.place_block(place)
-        placed.current_player = (self.current_player + 1)%self.num_players
-
-        return placed, (removed.log_prob_stable() + placed.log_prob_stable())
 
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
     # ASS METHODS                                                                           #
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
-    @property
-    def permutation_to_standard_pos(self):
-        # permutation[current_player] should be 0, as the network should assume current player is 0
-        # every other player is in the same order
-        return [(i - self.current_player)%self.num_players for i in range(self.num_players)]
-
-    def valid_selection_moves(self, move_prefix=()):
-        if move_prefix == ():
-            removes, places = self.valid_moves_product()
-            for remove in removes:
-                for place in places:
-                    yield (remove, place)
-        else:
-            for next_move in self.get_valid_next_selections(move_prefix=move_prefix):
-                yield move_prefix + (next_move,)
-
-    def get_valid_next_selections(self, move_prefix=()):
-        """
-        gets valid choices for next index to select
-            MUST BE DETERMINISTIC
-            moves must always be returned in the same order
-        Args:
-            move_prefix: indices selected so far, must be less than self.subsetsize
-        Returns:
-            iterable of N tuples indicating which additions are valid
-        """
-        if move_prefix == ():
-            for L in range(self.height - 2 + self.top_layer_filled()):
-                if self.blocks_on_level(L) > 1:
-                    for (i, t) in enumerate(self.block_info[L]):
-                        if t is not None:
-                            yield (L, i)
-        else:
-            if self.top_layer_filled():
-                for i in range(3):
-                    yield (self.height, i)
-            else:
-                for i in range(3):
-                    if self.block_info[-1][i] is None:
-                        yield (self.height - 1, i)
-
-    def valid_special_moves(self):
-        return iter(())
+    def valid_selection_moves(self):
+        removes, places = self.valid_moves_product()
+        for remove in removes:
+            for place in places:
+                yield (remove, place)
 
     @property
     def observation_shape(self):
         H = self.height + self.top_layer_filled()
         return ((H, 3), (H, 3), (H, 3, Block.vector_size())), (H, 3, 2), 0
-
-    @property
-    def observation(self):
-        H = self.height + self.top_layer_filled()
-        ident = torch.ones((H, 3), dtype=torch.long)*Jenga.EMPTY
-
-        parity = torch.arange(H)%2
-        parity = parity.view(H, 1).broadcast_to(H, 3)
-
-        blocks = torch.zeros((H, 3, Block.vector_size()))
-        ident[-1] = Jenga.PLACABLE
-        for layer in self.block_info:
-            for i, t in enumerate(layer):
-                if t is not None:
-                    ident[layer, i] = Jenga.BLOCK
-                    blocks[layer, i] = t.representation
-
-        Ht = torch.stack((torch.arange(H).view(-1, 1),
-                          torch.zeros((H, 1)),
-                          ), dim=-1)
-        Wt = torch.stack((torch.zeros((1, 3)),
-                          torch.arange(3).view(1, -1) - 1,  # recenter around 0
-                          ))
-        return (ident, parity, blocks,), Ht + Wt, torch.zeros(0)
-
-    @staticmethod
-    def num_observation_boards():
-        """
-        Returns: number of boards in (D1,...,DN, *1),(D1,...,DN, *2),...)
-        """
-        return 2
-
-    @staticmethod
-    def underlying_set_sizes():
-        """
-        returns number of possible distinct elements of each underlying set, if finite
-        """
-        return [3, 2, None]
 
     @property
     def representation(self):
@@ -638,11 +556,6 @@ class Jenga(SelectionGame):
                      fallen=fallen,
                      )
 
-    @staticmethod
-    def local_to_global_idx(idx):
-        L, I = idx
-        return L, I + 1
-
     def make_move(self, local_move):
         """
         gets resulting SubsetGame object of taking specified move from this state
@@ -653,21 +566,35 @@ class Jenga(SelectionGame):
         Returns:
             copy of SubsetGame that represents the result of taking the move
         """
-        game = self.clone()
         remove, place = local_move
-        result, log_prob_stable = game.play_move_log_probabilistic(remove=remove, place=place)
-        result.set_fallen(log_prob_stable=log_prob_stable)
-        return result
 
-    def is_terminal(self):
-        """
-        returns if current game has terminated
-        CANNOT BE PROBABILISTIC
-            if there is a probabilistic element to termination,
-                the probabilities must be calculated upon creation of this object and stored
-        Returns: boolean
-        """
-        return self.fallen or not self.valid_removes()
+        # remove a block
+        remove_blockinfo = self.blockinfo_remove_block(remove=remove)
+        removed = Jenga(
+            num_players=self.num_players,
+            current_player=self.current_player,
+            block_info=remove_blockinfo,
+            pos_std=self.pos_std,
+            angle_std=self.angle_std,
+            fallen=False,
+            render_mode=self.render_mode
+        )
+
+        # place a block
+        placed_blockinfo = removed.blockinfo_place_block(place=place)
+        placed = Jenga(
+            num_players=self.num_players,
+            current_player=(self.current_player + 1)%self.num_players,
+            block_info=placed_blockinfo,
+            pos_std=self.pos_std,
+            angle_std=self.angle_std,
+            fallen=False,
+            render_mode=self.render_mode
+        )
+        # can calculate both probabilities here, as the probability of both being stable is simply the produt
+        placed.set_fallen(log_prob_stable=removed.log_prob_stable() + placed.log_prob_stable())
+
+        return placed
 
     def get_result(self):
         """
@@ -689,31 +616,252 @@ class Jenga(SelectionGame):
 
         return results
 
-    def __eq__(self, other):
-        return self.block_info == other.block_info
+    def is_terminal(self):
+        """
+        returns if current game has terminated
+        CANNOT BE PROBABILISTIC
+            if there is a probabilistic element to termination,
+                the probabilities must be calculated upon creation of this object and stored
+        Returns: boolean
+        """
+        return self.fallen or self.no_valid_removes()
 
-    def __str__(self):
+    def render_pyplot(self):
+        plt.close()
+        ax = plt.figure().add_subplot(projection='3d')
+        ax.set_xticks(())
+        ax.set_yticks(())
+        ax.set_zticks(())
+
+        colors = ['purple', 'red', 'blue', 'orange', 'brown', 'yellow']
+        counter = 0
+
+        indices = self.get_indices()
+        place_height = self.height + self.top_layer_filled() - 1
+        pick_ht_bound = self.height - self.top_layer_filled()
+        for L, (t1, t2) in enumerate(zip(self.block_info + [[None, None, None]], indices)):
+            for (i, (b, idx)) in enumerate(zip(t1, t2)):
+                label = str(tuple(int(thing.item()) for thing in idx))
+                if b is not None:
+                    if L >= pick_ht_bound:
+                        label = None
+                    b.render_to(ax=ax,
+                                color=colors[counter%len(colors)],
+                                alpha=.9,
+                                label=label,
+                                )
+                else:
+                    if L == place_height:
+                        b = Block.random_block(L=L, i=i, pos_std=0, angle_std=0)
+                        b.render_frame_to(ax=ax,
+                                          color='black',
+                                          label=label,
+                                          linestyle='--',
+                                          )
+                counter += 1
+
+        plt.ion()
+        plt.show()
+
+
+class JengaOne(Genga):
+    """
+    version of jenga that is split into a pick move an a place move for each player
+    """
+
+    def __init__(self,
+                 block_held=False,
+                 num_players=2,
+                 current_player=0,
+                 block_info=None,
+                 pos_std=.001,
+                 angle_std=.003,
+                 fallen=False,
+                 initial_size=Genga.DEFAULT_INITIAL_SIZE,
+                 render_mode='pyplot',
+                 ):
+        super().__init__(subset_size=1,
+                         num_players=num_players,
+                         current_player=current_player,
+                         block_info=block_info,
+                         pos_std=pos_std,
+                         angle_std=angle_std,
+                         fallen=fallen,
+                         initial_size=initial_size,
+                         render_mode=render_mode,
+                         )
+        self.block_held = block_held
+
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+    # ASS METHODS                                                                           #
+    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+    def valid_selection_moves(self):
+        if self.block_held:
+            for move in self.valid_place_blocks():
+                yield (move,)
+        else:
+            for move in self.valid_removes():
+                yield (move,)
+
+    @property
+    def observation(self):
+        boards, indices, _ = super().observation
+        return boards, indices, torch.ones(1)*self.block_held
+
+    @property
+    def observation_shape(self):
+        H = self.height + self.top_layer_filled()
+        return ((H, 3), (H, 3), (H, 3, Block.vector_size())), (H, 3, 2), 1
+
+    @property
+    def representation(self):
         """
-        returns string representation of tower
-        binary encoding of each level
-        i.e. full layer is a 7, layer with one block is a 1, 2, or 4 depending on which block
-        blocks are indexed from -x to +x (even layers) or -y to +y (odd layers)
+        Returns: representation of self, likely a tuple of tensors
+            often this is the same as self.observation, (i.e. for perfect info games)
+        all information required to play the game must be obtainable from representation
+        i.e. self.from_represnetation(self.represnetation) must be functionally equivalent to self
+
+        should return clones of any internal variables
         """
-        s = ''
-        for L in self.block_info:
-            s_L = 0
-            for (i, t) in enumerate(L):
-                if t is not None:
-                    s_L += int(2**i)
-            s += str(s_L)
-        return s
+        return copy.deepcopy(self.block_info), self.num_players, self.current_player, self.fallen, self.block_held
+
+    @staticmethod
+    def from_representation(representation):
+        """
+        returns a SubsetGame instance from the output of self.get_representation
+        Args:
+            representation: output of self.get_representation
+        Returns: SubsetGame object
+        """
+        block_info, num_players, current_player, fallen, block_held = representation
+        return JengaOne(block_info=block_info,
+                        num_players=num_players,
+                        current_player=current_player,
+                        fallen=fallen,
+                        block_held=block_held,
+                        )
+
+    def make_move(self, local_move):
+        """
+        gets resulting SubsetGame object of taking specified move from this state
+        this may not be deterministic,
+        cannot be called on terminal states
+        Args:
+            local_move: a subset of the possible obs board indices, a tuple of N-tuples
+        Returns:
+            copy of SubsetGame that represents the result of taking the move
+        """
+        if self.block_held:
+            place, = local_move
+
+            placed_blockinfo = self.blockinfo_place_block(place=place)
+            placed = JengaOne(
+                block_held=False,
+                num_players=self.num_players,
+                current_player=(self.current_player + 1)%self.num_players,
+                block_info=placed_blockinfo,
+                pos_std=self.pos_std,
+                angle_std=self.angle_std,
+                fallen=False,
+                render_mode=self.render_mode
+            )
+            placed.set_fallen(log_prob_stable=placed.log_prob_stable())
+            return placed
+        else:
+            remove, = local_move
+            remove_blockinfo = self.blockinfo_remove_block(remove=remove)
+            removed = JengaOne(
+                block_held=True,
+                num_players=self.num_players,
+                current_player=self.current_player,
+                block_info=remove_blockinfo,
+                pos_std=self.pos_std,
+                angle_std=self.angle_std,
+                fallen=False,
+                render_mode=self.render_mode
+            )
+            removed.set_fallen(log_prob_stable=removed.log_prob_stable())
+            return removed
+
+    def get_result(self):
+        """
+        can only be called on terminal states
+        returns an outcome for each player
+        Returns: K-tuple of outcomes for each player
+            outcomes are generally in the range [0,1] and sum to 1
+            i.e. in a 1v1 game, outcomes would be (1,0) for p0 win, (0,1) for p1, and (.5,.5) for a tie
+            in team games this can be changed to give teammates the same reward, and have the sum across teams be 1
+        """
+
+        results = np.ones(self.num_players)/(self.num_players - 1)
+        # if we hold a block, current player is last player that moved
+        # if we are not holding a block, the last player that moved is the previous player
+        last_player = self.current_player - 1 + self.block_held
+        if self.fallen:
+            # previous player knocked over tower, so they lose
+            results[last_player] = 0
+        else:
+            # current player has no moves, so they lose
+            results[last_player] = 0
+        return results
+
+    def is_terminal(self):
+        """
+        returns if current game has terminated
+        CANNOT BE PROBABILISTIC
+            if there is a probabilistic element to termination,
+                the probabilities must be calculated upon creation of this object and stored
+        Returns: boolean
+        """
+        # eithher we fell, or we need to pick from a tower that has no valid moves
+        return self.fallen or (not self.block_held and self.no_valid_removes())
+
+    def render_pyplot(self):
+        plt.close()
+        ax = plt.figure().add_subplot(projection='3d')
+        ax.set_xticks(())
+        ax.set_yticks(())
+        ax.set_zticks(())
+
+        colors = ['purple', 'red', 'blue', 'orange', 'brown', 'yellow']
+        counter = 0
+
+        indices = self.get_indices()
+        place_height = self.height + self.top_layer_filled() - 1
+        pick_ht_bound = self.height - self.top_layer_filled()
+        for L, (t1, t2) in enumerate(zip(self.block_info + [[None, None, None]], indices)):
+            for (i, (b, idx)) in enumerate(zip(t1, t2)):
+                label = str(tuple(int(thing.item()) for thing in idx))
+                if b is not None:
+                    # if we are holding a block, we do not care about these indices
+                    if self.block_held or (L >= pick_ht_bound):
+                        label = None
+                    b.render_to(ax=ax,
+                                color=colors[counter%len(colors)],
+                                alpha=.9,
+                                label=label,
+                                )
+                else:
+                    if (L == place_height) and self.block_held:
+                        b = Block.random_block(L=L, i=i, pos_std=0, angle_std=0)
+                        b.render_frame_to(ax=ax,
+                                          color='black',
+                                          label=label,
+                                          linestyle='--',
+                                          )
+                counter += 1
+
+        plt.ion()
+        plt.show()
 
 
 if __name__ == "__main__":
-    from aleph0.algs.nonlearning.mcts import MCTS
+
+    from aleph0.algs import Human, MCTS, play_game
 
     b = Block.random_block(1, 1, pos_std=0.)
-    t = Jenga(pos_std=0.001, angle_std=0.005)
+    t = Jenga(pos_std=0.001, angle_std=0.005, num_players=3)
     print(t, t.is_terminal(), t.current_player)
     t = t.make_move(((0, 0), (5, 0)))
     print(t, t.is_terminal(), t.current_player)
@@ -727,13 +875,16 @@ if __name__ == "__main__":
     t = t.make_move(((0, 0), (3, 2)))
     # the bottom layer has two blocks remaining, MCTS should see that removing one is a really bad idea
     # i.e. the moves starting with (0,1) should have very low probability
-    alg = MCTS(num_reads=100)
+    alg = MCTS(num_reads=200)
     print(t)
 
     policy, val = alg.get_policy_value(game=t)
     for prob, mvoe in zip(policy, t.get_all_valid_moves()):
         print(mvoe, prob.item())
     print('value', val)
+
+    print(play_game(JengaOne(), alg_list=[Human(), alg]))
+
     quit()
     from PIL import Image
 
