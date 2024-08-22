@@ -159,11 +159,12 @@ class CisFormer(Former):
                                  hidden_layers=collapse_hidden_layers,
                                  )
 
-    def forward(self, X):
+    def forward(self, X, src=None):
         """
         note: batch size is kept for legacy, it will probably be 1
         Args:
             X:  (batch size, D1, ..., Dk, embedding_dim)
+            src: ignored, as this is an unconditional encoder
         Returns:
             (batch size, D1, ..., Dk, embedding_dim), (batch size, embedding_dim)
         """

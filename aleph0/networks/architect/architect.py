@@ -2,7 +2,7 @@ from torch import nn
 
 from aleph0.networks.architect.beginning.input_embedding import InputEmbedding, AutoInputEmbedder
 from aleph0.networks.architect.middle.former import Former
-from aleph0.networks.architect.middle.transformer import TransFormer
+from aleph0.networks.architect.middle.transformer import TransFormer, TransFormerEmbedder
 from aleph0.networks.architect.middle.cnn import CisFormer
 from aleph0.networks.architect.end.policy_value import PolicyValue
 
@@ -55,8 +55,8 @@ class Architect(nn.Module):
         Returns:
             policy, value, same as policy value net
         """
-        embedding = self.input_embedder.forward(observation=observation)
-        embedding, cls_embedding = self.former.forward(embedding)
+        embedding, vec_embedding = self.input_embedder.forward(observation=observation)
+        embedding, cls_embedding = self.former.forward(embedding, src=vec_embedding)
         return self.policy_val.forward(embedding=embedding,
                                        cls_embedding=cls_embedding,
                                        selection_moves=selection_moves,
@@ -139,7 +139,8 @@ class AutoTransArchitect(AutoArchitect):
                  dim_feedforward=1024,
                  dropout=.1,
                  nhead=4,
-                 num_layers=6,
+                 num_board_layers=6,
+                 num_vector_layers=6,
                  device=None,
                  ):
         """
@@ -158,16 +159,27 @@ class AutoTransArchitect(AutoArchitect):
             embedding_dim: embedding dim to use
             dim_feedforward: feedforward dim in each transformer layer
             nhead: number of heads in transformer
-            num_layers: number of layers in transformer
+            num_board_layers: number of layers in trans decoder for board embedding
+            num_vector_layers: number of layers in trans encoder for vector embedding
             device: device to put stuff on
         """
-        former = TransFormer(embedding_dim=embedding_dim,
-                             nhead=nhead,
-                             dim_feedforward=dim_feedforward,
-                             num_layers=num_layers,
-                             dropout=dropout,
-                             device=device,
-                             )
+        if additional_vector_dim==0:
+            former = TransFormerEmbedder(embedding_dim=embedding_dim,
+                                         nhead=nhead,
+                                         dim_feedforward=dim_feedforward,
+                                         num_layers=num_board_layers,
+                                         dropout=dropout,
+                                         device=device,
+                                         )
+        else:
+            former = TransFormer(embedding_dim=embedding_dim,
+                                 nhead=nhead,
+                                 dim_feedforward=dim_feedforward,
+                                 num_encoder_layers=num_vector_layers,
+                                 num_decoder_layers=num_board_layers,
+                                 dropout=dropout,
+                                 device=device,
+                                 )
         super().__init__(
             sequence_dim=sequence_dim,
             selection_size=selection_size,

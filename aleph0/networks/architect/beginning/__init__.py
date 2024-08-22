@@ -1,4 +1,9 @@
-from aleph0.networks.architect.beginning.input_embedding import InputEmbedding, AutoInputEmbedder
+from aleph0.networks.architect.beginning.input_embedding import (InputEmbedding,
+                                                                 InputEmbeddingMapVector,
+                                                                 InputEmbeddingAppendVector,
+                                                                 InputEmbeddingIgnoreVector,
+                                                                 AutoInputEmbedder,
+                                                                 )
 from aleph0.networks.architect.beginning.pos_enc import (AbstractPositionalEncoding,
                                                          IdentityPosititonalEncoding,
                                                          ClassicPositionalEncoding,
@@ -16,6 +21,9 @@ from aleph0.networks.architect.beginning.board_embedding import (AutoBoardSetEmb
 
 __all__ = [
     "InputEmbedding",
+    'InputEmbeddingMapVector',
+    'InputEmbeddingAppendVector',
+    'InputEmbeddingIgnoreVector',
     "AutoInputEmbedder",
 
     "AbstractPositionalEncoding",

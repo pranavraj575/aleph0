@@ -12,8 +12,8 @@ class ChainFormer(Former):
         super().__init__()
         self.formers = nn.ModuleList(former_list)
 
-    def forward(self, X):
+    def forward(self, X, src):
         cls_embedding = None
         for former in self.formers:
-            X, cls_embedding = former.forward(X)
+            X, cls_embedding = former.forward(X, src)
         return X, cls_embedding

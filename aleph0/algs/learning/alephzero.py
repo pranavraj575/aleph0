@@ -423,25 +423,25 @@ if __name__ == '__main__':
 
     from aleph0.examples.tictactoe import Toe
     from aleph0.algs import Human
-    from aleph0.networks.architect import AutoTransArchitect
+    from aleph0.networks.architect import AutoTransEmbedArchitect
     from aleph0.networks.buffers import ReplayBufferDiskStorage
 
     game = Toe()
 
-    alg = AlephZero(network=AutoTransArchitect(sequence_dim=game.sequence_dim,
-                                               selection_size=game.selection_size,
-                                               additional_vector_dim=game.get_obs_vector_shape(),
-                                               underlying_set_shapes=game.get_underlying_set_shapes(),
-                                               underlying_set_sizes=game.underlying_set_sizes(),
-                                               special_moves=game.special_moves,
-                                               num_players=game.num_players,
-                                               encoding_nums=(10, 10),
-                                               base_periods_pre_exp=[-math.log(2), -math.log(2)],
-                                               embedding_dim=64,
-                                               dim_feedforward=128,
-                                               dropout=0,
-                                               num_layers=4,
-                                               ),
+    alg = AlephZero(network=AutoTransEmbedArchitect(sequence_dim=game.sequence_dim,
+                                                    selection_size=game.selection_size,
+                                                    additional_vector_dim=game.get_obs_vector_shape(),
+                                                    underlying_set_shapes=game.get_underlying_set_shapes(),
+                                                    underlying_set_sizes=game.underlying_set_sizes(),
+                                                    special_moves=game.special_moves,
+                                                    num_players=game.num_players,
+                                                    encoding_nums=(10, 10),
+                                                    base_periods_pre_exp=[-math.log(2), -math.log(2)],
+                                                    embedding_dim=64,
+                                                    dim_feedforward=128,
+                                                    dropout=0,
+                                                    num_layers=4,
+                                                    ),
                     replay_buffer=ReplayBufferDiskStorage(storage_dir='TEMP', capacity=1000, ),
                     GameClass=Toe,
                     )
