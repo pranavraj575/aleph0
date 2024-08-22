@@ -3,7 +3,6 @@ from aleph0.networks.architect.middle.collapse import Collapse
 
 from aleph0.networks.architect.architect import (Architect,
                                                  AutoArchitect,
-                                                 AutoTransEmbedArchitect,
                                                  AutoCisArchitect,
                                                  )
 
