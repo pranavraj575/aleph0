@@ -493,6 +493,11 @@ class Genga(SelectionGame):
 
 
 class Jenga(Genga):
+    '''
+    Jenga implementation
+    each move is a pick selection and a place selection
+    '''
+
     def __init__(self,
                  num_players=2,
                  current_player=0,
@@ -638,7 +643,7 @@ class Jenga(Genga):
 
         indices = self.get_indices()
         place_height = self.height + self.top_layer_filled() - 1
-        pick_ht_bound = self.height - self.top_layer_filled()
+        pick_ht_bound = place_height - 1
         for L, (t1, t2) in enumerate(zip(self.block_info + [[None, None, None]], indices)):
             for (i, (b, idx)) in enumerate(zip(t1, t2)):
                 label = str(tuple(int(thing.item()) for thing in idx))
@@ -667,6 +672,7 @@ class Jenga(Genga):
 class JengaOne(Genga):
     """
     version of jenga that is split into a pick move an a place move for each player
+    observation vector includes whether it is a pick or place turn for player
     """
 
     def __init__(self,
@@ -829,7 +835,7 @@ class JengaOne(Genga):
 
         indices = self.get_indices()
         place_height = self.height + self.top_layer_filled() - 1
-        pick_ht_bound = self.height - self.top_layer_filled()
+        pick_ht_bound = place_height - 1
         for L, (t1, t2) in enumerate(zip(self.block_info + [[None, None, None]], indices)):
             for (i, (b, idx)) in enumerate(zip(t1, t2)):
                 label = str(tuple(int(thing.item()) for thing in idx))
