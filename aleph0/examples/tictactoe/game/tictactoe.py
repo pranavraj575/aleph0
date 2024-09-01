@@ -25,7 +25,7 @@ class Toe(FixedSizeSelectionGame):
 
     @staticmethod
     def fixed_obs_shape():
-        return ((3, 3),), (3, 3, 2), 1
+        return ((3, 3),), (3, 3, 2), 0
 
     @staticmethod
     def underlying_set_sizes():
@@ -63,6 +63,9 @@ class Toe(FixedSizeSelectionGame):
 
     @property
     def observation(self):
+        """
+        ignores current player, as it is always assumed to be the X player's move
+        """
         if self.current_player == self.P0:
             B, P, T = self.representation
         else:
@@ -71,7 +74,7 @@ class Toe(FixedSizeSelectionGame):
             p1s = torch.where(torch.eq(B, self.P1))
             B[p0s] = self.P1
             B[p1s] = self.P0
-        return (B,), P, T
+        return (B,), P, torch.zeros(0)
 
     @staticmethod
     def from_representation(representation):

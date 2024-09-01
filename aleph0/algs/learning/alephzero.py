@@ -55,6 +55,9 @@ class AlephZero(Algorithm):
         epoch_infos = self.info.pop('epoch_infos')
         if epoch_infos:
             epoch_info_save_dir = os.path.join(save_dir, 'epoch_infos')
+            if 'epoch_info_save_dir' not in self.info and os.path.exists(epoch_info_save_dir):
+                # if this is a new direcotry, we must clear it
+                shutil.rmtree(epoch_info_save_dir)
             if 'epoch_info_save_dir' in self.info and self.info['epoch_info_save_dir'] != epoch_info_save_dir:
                 shutil.copytree(self.info['epoch_info_save_dir'], epoch_info_save_dir)
 

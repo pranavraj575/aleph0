@@ -252,4 +252,5 @@ def AutoInputEmbedder(
             board_embed=board_embed,
             vector_map=VecToSeqEmbedding(),
             final_embedding_dim=final_embedding_dim,
+            vector_final_dim=final_embedding_dim,
         )
