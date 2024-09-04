@@ -29,3 +29,6 @@ Homepage = "https://github.com/pranavraj575/aleph0"
 omit = [
     "aleph0/tests",
 ]
+
+[tool.setuptools.packages.find]
+exclude = ["data*", "temp*"]
