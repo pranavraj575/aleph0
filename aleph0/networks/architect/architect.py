@@ -97,7 +97,10 @@ class AutoArchitect(Architect):
             embedding_dim: embedding dim to use
             device: device to put stuff on
         """
-
+        if encoding_nums is not None:
+            assert len(encoding_nums) == sequence_dim
+        if base_periods_pre_exp is not None:
+            assert len(base_periods_pre_exp) == sequence_dim
         input_embedder = AutoInputEmbedder(embedding_dim=embedding_dim,
                                            sequence_dim=sequence_dim,
                                            underlying_set_shapes=underlying_set_shapes,
@@ -163,7 +166,7 @@ class AutoTransArchitect(AutoArchitect):
             num_vector_layers: number of layers in trans encoder for vector embedding
             device: device to put stuff on
         """
-        if additional_vector_dim==0:
+        if additional_vector_dim == 0:
             former = TransFormerEmbedder(embedding_dim=embedding_dim,
                                          nhead=nhead,
                                          dim_feedforward=dim_feedforward,

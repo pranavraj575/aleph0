@@ -1,7 +1,6 @@
 import torch
 
 from aleph0.game import FixedSizeSelectionGame
-from aleph0.examples.tictactoe.game.tictactoe import Toe
 
 
 class UltimateToe(FixedSizeSelectionGame):
@@ -27,7 +26,7 @@ class UltimateToe(FixedSizeSelectionGame):
             board = self.EMPTY*torch.ones((3, 3, 3, 3), dtype=torch.long)
         self.board = board
         if super_toe is None:
-            self.super_toe = torch.ones(3, 3)*self.EMPTY
+            self.super_toe = torch.ones(3, 3, dtype=torch.long)*self.EMPTY
             for i in range(3):
                 for j in range(3):
                     self.reset_super_toe(i, j)
@@ -72,11 +71,18 @@ class UltimateToe(FixedSizeSelectionGame):
 
     @staticmethod
     def fixed_obs_shape():
-        return ((3, 3, 3, 3),), (3, 3, 3, 3, 2), 0
+        return ((
+                    (3, 3, 3, 3),
+                    # (3, 3, 3, 3)
+                ),
+                (3, 3, 3, 3, 2),
+                0)
 
     @staticmethod
     def underlying_set_sizes():
-        return (3,)
+        return (3,
+                # 4,
+                )
 
     def possible_move_cnt(self):
         return 81
@@ -120,7 +126,7 @@ class UltimateToe(FixedSizeSelectionGame):
     @property
     def representation(self):
         return (self.board.clone(),
-                UltimateToe.get_indices(),
+                self.get_indices(),
                 torch.tensor([self.current_player]),
                 self.active_board,
                 self.super_toe.clone(),
@@ -132,14 +138,27 @@ class UltimateToe(FixedSizeSelectionGame):
         ignores current player, as it is always assumed to be the X player's move
         """
         if self.current_player == self.P0:
-            B, P, T, active_board, _ = self.representation
+            B, P, T, active_board, super_toe = self.representation
         else:
-            B, P, T, active_board, _ = self.representation
+            B, P, T, active_board, super_toe = self.representation
             p0s = torch.where(torch.eq(B, self.P0))
             p1s = torch.where(torch.eq(B, self.P1))
             B[p0s] = self.P1
             B[p1s] = self.P0
-        return (B,), P, torch.zeros(0)
+
+            # p0s = torch.where(torch.eq(super_toe, self.P0))
+            # p1s = torch.where(torch.eq(super_toe, self.P1))
+            # super_toe[p0s] = self.P1
+            # super_toe[p1s] = self.P0
+        # super_toe = super_toe.reshape(3, 3, 1, 1).broadcast_to(3, 3, 3, 3)
+        return (
+            (
+                B,
+                # super_toe,
+            ),
+            P,
+            torch.zeros(0)
+        )
 
     @staticmethod
     def from_representation(representation):
@@ -244,10 +263,48 @@ class UltimateToe(FixedSizeSelectionGame):
         return thing
 
 
-if __name__ == '__main__':
-    from aleph0.algs import Human, play_game
+class LessUltimateToe(UltimateToe):
+    """
+    ultimate tic tac toe 2d representation
+    all aelse is same
+    """
 
-    toe = UltimateToe()
+    @staticmethod
+    def get_indices():
+        I = torch.cat((torch.arange(9).view((9, 1, 1)),
+                       torch.zeros((9, 1, 1)),
+                       ), dim=-1)
+        J = torch.cat((torch.zeros((1, 9, 1)),
+                       torch.arange(9).view((1, 9, 1)),
+                       ), dim=-1)
+        return I + J
+
+    @staticmethod
+    def fixed_obs_shape():
+        B, P, T = super().fixed_obs_shape()
+        # combine the first and third, second and fourth dimensions
+        B = tuple(
+            tuple(
+                [b[0]*b[2], b[1]*b[3]] + list(b[4:])
+            )
+            for b in B)
+        return B, P, T
+
+    @property
+    def observation(self):
+        """
+        ignores current player, as it is always assumed to be the X player's move
+        """
+        Bs, P, T = super().observation
+        # first swap so we have dimensions in order (big I, mini i, big J, mini j, extra)
+        # then flatten (big J mini j) and then (big I, mini i) dimensions
+        return tuple(
+            B.transpose(1,2).flatten(2,3).flatten(0,1)
+                     for B in Bs), P, T
+
+
+if __name__ == '__main__':
+    toe = LessUltimateToe()
     while not toe.is_terminal():
         toe = toe.make_move(next(toe.get_all_valid_moves()))
         print(toe)

@@ -1,7 +1,7 @@
 from aleph0.networks.architect.architect import (Architect,
                                                  AutoArchitect,
                                                  AutoCisArchitect,
-                                                AutoTransArchitect,
+                                                 AutoTransArchitect,
                                                  )
 from aleph0.networks.architect.beginning.input_embedding import (InputEmbedding,
                                                                  InputEmbeddingMapVector,

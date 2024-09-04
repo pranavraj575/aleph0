@@ -228,6 +228,10 @@ def AutoInputEmbedder(
             if None, uses ClassicPositionalEncoding
         base_periods_pre_exp: to be used in PositionalAppender
     """
+    if encoding_nums is not None:
+        assert len(encoding_nums) == sequence_dim
+    if base_periods_pre_exp is not None:
+        assert len(base_periods_pre_exp) == sequence_dim
     board_embed = AutoBoardSetEmbedder(underlying_set_shapes=underlying_set_shapes,
                                        underlying_set_sizes=underlying_set_sizes,
                                        final_embedding_dim=embedding_dim,
