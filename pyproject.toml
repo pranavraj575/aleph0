@@ -14,21 +14,17 @@ classifiers = [
 ]
 dependencies = [
     'torch',
+    'torchConvNd',
     'numpy',
 ]
 [project.optional-dependencies]
-jenga = [
+games = [
     'scipy',
     'matplotlib'
 ]
 
 [project.urls]
 Homepage = "https://github.com/pranavraj575/aleph0"
-
-[tool.coverage.run]
-omit = [
-    "aleph0/tests",
-]
 
 [tool.setuptools.packages.find]
 exclude = ["data*", "temp*"]
