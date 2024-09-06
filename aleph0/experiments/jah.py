@@ -1,26 +1,15 @@
 import math, argparse
+from aleph0.experiments.common.arg_stuff import *
 
 PARSER = argparse.ArgumentParser()
-PARSER.add_argument('--plot', action='store_true', required=False,
-                    help="whether to plot")
-PARSER.add_argument('--smooth-radius', type=int, required=False, default=10,
-                    help="radius of smoothing window of plot")
-PARSER.add_argument('--play', action='store_true', required=False,
-                    help="whether to play game with alg")
-PARSER.add_argument('--reset', action='store_true', required=False,
-                    help="reset training")
+
+add_experiment_args(parse=PARSER)
+add_trans_args(parse=PARSER,
+               default_dim_feedforward=64,
+               )
+
 PARSER.add_argument('--game-state-search', action='store_true', required=False,
                     help="check all non-terminal tic tac toe boards to see if the policy obtained is correct")
-PARSER.add_argument('--ident', action='store', required=False, default='toe_test',
-                    help="folder name")
-PARSER.add_argument('--epochs', type=int, required=False, default=2000,
-                    help="number of epochs")
-PARSER.add_argument('--embed-dim', type=int, required=False, default=64,
-                    help="embed dim")
-PARSER.add_argument('--num-layers', type=int, required=False, default=3,
-                    help="num layers")
-PARSER.add_argument('--dropout', type=float, required=False, default=0.1,
-                    help="dropout")
 args = PARSER.parse_args()
 import torch, numpy as np, random, os, sys, time
 
@@ -37,10 +26,7 @@ torch.random.manual_seed(1)
 np.random.seed(1)
 random.seed(1)
 
-ident = args.ident
-ident += '_embed_dim_' + str(args.embed_dim)
-ident += '_lyrs_' + str(args.num_layers)
-ident += '_drop_' + str(float(args.dropout))
+ident = args.ident + get_trans_ident(args)
 
 alg = AlephZero(network=AutoTransArchitect(sequence_dim=game.sequence_dim,
                                            selection_size=game.selection_size,
@@ -52,7 +38,7 @@ alg = AlephZero(network=AutoTransArchitect(sequence_dim=game.sequence_dim,
                                            encoding_nums=(10, 10),
                                            base_periods_pre_exp=[-math.log(2), -math.log(2)],
                                            embedding_dim=args.embed_dim,
-                                           dim_feedforward=64,
+                                           dim_feedforward=args.dim_feedforward,
                                            dropout=args.dropout,
                                            num_board_layers=args.num_layers,
                                            nhead=4,
@@ -105,7 +91,7 @@ if not args.reset and os.path.exists(save_dir):
         just_win_rates = dict()
         just_tie_rates = dict()
         just_loss_rates = dict()
-        epoch_infos=alg.epoch_infos
+        epoch_infos = alg.epoch_infos
         x = self_outcomes = [epoch_info['epoch'] for epoch_info in epoch_infos]
         for trial_name in testing_trial_names:
             for smoo in (True, False):
@@ -235,7 +221,7 @@ while alg.info['epochs'] < args.epochs:
               )
     print(alg.epochs, 'time', round(time.time() - start), '         ')
 
-    if not alg.info['epochs']%25:
+    if not alg.info['epochs']%args.ckpt_freq:
         print('saving')
         alg.save(save_dir)
         print('done saving')

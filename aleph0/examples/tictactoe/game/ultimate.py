@@ -73,7 +73,7 @@ class UltimateToe(FixedSizeSelectionGame):
     def fixed_obs_shape():
         return ((
                     (3, 3, 3, 3),
-                    # (3, 3, 3, 3)
+                    (3, 3, 3, 3)
                 ),
                 (3, 3, 3, 3, 2),
                 0)
@@ -81,7 +81,7 @@ class UltimateToe(FixedSizeSelectionGame):
     @staticmethod
     def underlying_set_sizes():
         return (3,
-                # 4,
+                4,
                 )
 
     def possible_move_cnt(self):
@@ -146,15 +146,15 @@ class UltimateToe(FixedSizeSelectionGame):
             B[p0s] = self.P1
             B[p1s] = self.P0
 
-            # p0s = torch.where(torch.eq(super_toe, self.P0))
-            # p1s = torch.where(torch.eq(super_toe, self.P1))
-            # super_toe[p0s] = self.P1
-            # super_toe[p1s] = self.P0
-        # super_toe = super_toe.reshape(3, 3, 1, 1).broadcast_to(3, 3, 3, 3)
+            p0s = torch.where(torch.eq(super_toe, self.P0))
+            p1s = torch.where(torch.eq(super_toe, self.P1))
+            super_toe[p0s] = self.P1
+            super_toe[p1s] = self.P0
+        super_toe = super_toe.reshape(3, 3, 1, 1).broadcast_to(3, 3, 3, 3)
         return (
             (
                 B,
-                # super_toe,
+                super_toe,
             ),
             P,
             torch.zeros(0)
@@ -299,8 +299,8 @@ class LessUltimateToe(UltimateToe):
         # first swap so we have dimensions in order (big I, mini i, big J, mini j, extra)
         # then flatten (big J mini j) and then (big I, mini i) dimensions
         return tuple(
-            B.transpose(1,2).flatten(2,3).flatten(0,1)
-                     for B in Bs), P, T
+            B.transpose(1, 2).flatten(2, 3).flatten(0, 1)
+            for B in Bs), P, T
 
 
 if __name__ == '__main__':
