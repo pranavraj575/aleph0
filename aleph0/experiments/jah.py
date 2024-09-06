@@ -7,6 +7,12 @@ add_experiment_args(parse=PARSER)
 add_trans_args(parse=PARSER,
                default_dim_feedforward=64,
                )
+add_aleph_args(parse=PARSER,
+               default_num_reads=420,
+               default_buffer_capacity=10000,
+               default_batch_size=512,
+               default_minibatch_size=256,
+               )
 
 PARSER.add_argument('--game-state-search', action='store_true', required=False,
                     help="check all non-terminal tic tac toe boards to see if the policy obtained is correct")
@@ -41,13 +47,13 @@ alg = AlephZero(network=AutoTransArchitect(sequence_dim=game.sequence_dim,
                                            dim_feedforward=args.dim_feedforward,
                                            dropout=args.dropout,
                                            num_board_layers=args.num_layers,
-                                           nhead=4,
+                                           nhead=args.num_heads,
                                            ),
                 replay_buffer=ReplayBufferDiskStorage(storage_dir=os.path.join(DIR, 'data', 'temp', ident),
-                                                      capacity=100000,
+                                                      capacity=args.buffer_capacity,
                                                       ),
                 GameClass=Toe,
-                default_num_reads=420,
+                default_num_reads=args.num_reads,
                 )
 
 save_dir = os.path.join(DIR, 'data', ident)
@@ -60,9 +66,6 @@ testing_trial_names = [
 name_map = {'random': 'Random',
             'exhaustive': 'Optimal',
             }
-
-batch = 512
-mini = 256
 
 
 def smooth(arr, n):
@@ -210,14 +213,14 @@ if args.game_state_search:
 while alg.info['epochs'] < args.epochs:
     these_testing_agents = None
     start = time.time()
-    if not alg.info['epochs']%1:
+    if not alg.info['epochs']%args.test_freq and args.num_test_games:
         these_testing_agents = testing_agents
     alg.epoch(game=game,
-              batch_size=batch,
-              minibatch_size=mini,
+              batch_size=args.batch_size,
+              minibatch_size=args.minibatch_size,
               testing_agents=these_testing_agents,
               testing_trial_names=testing_trial_names,
-              num_test_games=100,
+              num_test_games=args.num_test_games,
               )
     print(alg.epochs, 'time', round(time.time() - start), '         ')
 
