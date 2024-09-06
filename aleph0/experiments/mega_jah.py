@@ -2,7 +2,10 @@ import math, argparse
 from aleph0.experiments.common.arg_stuff import *
 
 PARSER = argparse.ArgumentParser()
-add_experiment_args(parse=PARSER)
+add_experiment_args(parse=PARSER,
+                    default_test_games=5,
+                    default_test_freq=10,
+                    )
 add_trans_args(parse=PARSER)
 add_aleph_args(parse=PARSER,
                default_num_reads=1069,
