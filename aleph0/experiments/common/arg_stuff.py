@@ -1,11 +1,12 @@
 def add_experiment_args(parse,
+                        ident,
                         default_epochs=2000,
                         default_ckpt_freq=25,
                         default_smooth_rad=10,
                         default_test_games=5,
                         default_test_freq=1,
                         ):
-    parse.add_argument('--ident', action='store', required=False, default='ult_toe_test',
+    parse.add_argument('--ident', action='store', required=False, default=ident,
                        help="folder name")
     parse.add_argument('--epochs', type=int, required=False, default=default_epochs,
                        help="number of epochs")
@@ -50,7 +51,7 @@ def add_trans_args(parse,
 
 def get_trans_ident(args):
     ident = ''
-    ident += 'embed_dim_' + str(args.embed_dim)
+    ident += '_embed_dim_' + str(args.embed_dim)
     ident += '_heads_' + str(args.num_heads)
     ident += '_lyrs_' + str(args.num_layers)
     ident += '_drop_' + str(float(args.dropout))
@@ -77,7 +78,7 @@ def add_aleph_args(parse,
 
 def get_aleph_ident(args):
     ident = ''
-    ident += 'mctsreads_' + str(args.num_reads)
+    ident += '_mctsreads_' + str(args.num_reads)
     ident += '_cap_' + str(args.buffer_capacity)
     ident += '_btch_' + str(args.batch_size)
     ident += '_mini_' + str(args.minibatch_size)

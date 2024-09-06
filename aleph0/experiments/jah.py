@@ -3,9 +3,19 @@ from aleph0.experiments.common.arg_stuff import *
 
 PARSER = argparse.ArgumentParser()
 
-add_experiment_args(parse=PARSER)
+add_experiment_args(parse=PARSER,
+                    ident='toe_test',
+                    default_epochs=1500,
+                    default_test_games=50,
+                    default_ckpt_freq=25,
+                    default_test_freq=1,
+                    )
 add_trans_args(parse=PARSER,
                default_dim_feedforward=64,
+               default_dropout=.1,
+               default_embed_dim=64,
+               default_num_heads=4,
+               default_num_layers=3,
                )
 add_aleph_args(parse=PARSER,
                default_num_reads=420,
@@ -32,7 +42,8 @@ torch.random.manual_seed(1)
 np.random.seed(1)
 random.seed(1)
 
-ident = args.ident + get_trans_ident(args)
+ident = args.ident + get_trans_ident(args=args)+get_aleph_ident(args=args)
+print('ident:', ident)
 
 alg = AlephZero(network=AutoTransArchitect(sequence_dim=game.sequence_dim,
                                            selection_size=game.selection_size,
