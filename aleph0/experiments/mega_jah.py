@@ -3,8 +3,9 @@ from aleph0.experiments.common.arg_stuff import *
 
 PARSER = argparse.ArgumentParser()
 add_experiment_args(parse=PARSER,
-                    default_test_games=5,
-                    default_test_freq=10,
+                    default_test_games=50,
+                    default_test_freq=1,
+                    default_ckpt_freq=5,
                     )
 add_trans_args(parse=PARSER)
 add_aleph_args(parse=PARSER,
@@ -62,7 +63,7 @@ plt_dir = os.path.join(save_dir, 'plot')
 testing_trial_names = [
     'random',
     'self',
-    'mcts',
+    #'mcts',
 ]
 name_map = {'random': 'Random',
             'self': 'Self',
@@ -148,7 +149,7 @@ if not args.reset and os.path.exists(save_dir):
         print('done plotting')
 testing_agents = [[Randy()],
                   [alg],
-                  [MCTS(num_reads=args.num_reads)],
+                  #[MCTS(num_reads=args.num_reads)],
                   ]
 
 if args.play:
