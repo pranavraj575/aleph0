@@ -2,6 +2,9 @@ import math, argparse, torch
 from aleph0.experiments.common.arg_stuff import *
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device=None
+# for some reason this is faster, probably because we are parallelizing each batch
+# (parallelinzing that would be annoying)
 print('using device', device)
 PARSER = argparse.ArgumentParser()
 
