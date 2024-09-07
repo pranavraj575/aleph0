@@ -56,6 +56,7 @@ class Architect(nn.Module):
             policy, value, same as policy value net
         """
         embedding, vec_embedding = self.input_embedder.forward(observation=observation)
+
         embedding, cls_embedding = self.former.forward(embedding, src=vec_embedding)
         return self.policy_val.forward(embedding=embedding,
                                        cls_embedding=cls_embedding,
@@ -109,6 +110,7 @@ class AutoArchitect(Architect):
                                            final_embedding_dim=embedding_dim,
                                            encoding_nums=encoding_nums,
                                            base_periods_pre_exp=base_periods_pre_exp,
+                                           device=device,
                                            )
         embedding_dim = input_embedder.embedding_dim
         policy_val = PolicyValue(embedding_dim=embedding_dim,
@@ -118,6 +120,7 @@ class AutoArchitect(Architect):
                                  policy_hidden_layers=[embedding_dim*4],
                                  value_hidden_layers=[embedding_dim*4],
                                  special_hidden_layers=[embedding_dim*4],
+                                 device=device,
                                  )
         super().__init__(input_embedder=input_embedder,
                          former=former,

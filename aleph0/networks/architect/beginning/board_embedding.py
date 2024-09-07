@@ -7,9 +7,10 @@ class BoardEmbedder(nn.Module):
     embeds a board (M, D1, ..., DN, *) into embedding dim (M, D1, ..., DN, E)
     """
 
-    def __init__(self, embedding_dim):
+    def __init__(self, embedding_dim, device):
         super().__init__()
         self.embedding_dim = embedding_dim
+        self.device = device
 
     def forward(self, board):
         raise NotImplementedError
@@ -26,9 +27,14 @@ class PieceEmbedder(DiscretePieceEnc):
     embeds boards of discrete pieces
     """
 
-    def __init__(self, embedding_dim, piece_count):
-        super().__init__(embedding_dim=embedding_dim)
-        self.embedder = nn.Embedding(num_embeddings=piece_count, embedding_dim=self.embedding_dim)
+    def __init__(self, embedding_dim, piece_count, device=None):
+        super().__init__(embedding_dim=embedding_dim,
+                         device=device,
+                         )
+        self.embedder = nn.Embedding(num_embeddings=piece_count,
+                                     embedding_dim=self.embedding_dim,
+                                     device=self.device,
+                                     )
 
     def forward(self, board):
         """
@@ -44,8 +50,13 @@ class OneHotEmbedder(DiscretePieceEnc):
     embeds boards of discrete pieces as one-hot vectors
     """
 
-    def __init__(self, piece_count):
-        super().__init__(embedding_dim=piece_count)
+    def __init__(self,
+                 piece_count,
+                 device=None,
+                 ):
+        super().__init__(embedding_dim=piece_count,
+                         device=device,
+                         )
 
     def forward(self, board):
         """
@@ -61,9 +72,18 @@ class LinearEmbedder(BoardEmbedder):
     embeds boards of vectors through a simple linear map
     """
 
-    def __init__(self, embedding_dim, input_dim):
-        super().__init__(embedding_dim=embedding_dim)
-        self.linear = nn.Linear(in_features=input_dim, out_features=embedding_dim)
+    def __init__(self,
+                 embedding_dim,
+                 input_dim,
+                 device=None,
+                 ):
+        super().__init__(embedding_dim=embedding_dim,
+                         device=device,
+                         )
+        self.linear = nn.Linear(in_features=input_dim,
+                                out_features=embedding_dim,
+                                device=self.device,
+                                )
 
     def forward(self, board):
         """
@@ -79,7 +99,11 @@ class FlattenEmbedder(BoardEmbedder):
     embeds boards of vectors by flattening them
     """
 
-    def __init__(self, input_shape, embedding_dim=None):
+    def __init__(self,
+                 input_shape,
+                 embedding_dim=None,
+                 device=None,
+                 ):
         """
 
         Args:
@@ -92,7 +116,9 @@ class FlattenEmbedder(BoardEmbedder):
             embedding_dim = 1
             for item in input_shape:
                 embedding_dim = int(item*embedding_dim)
-        super().__init__(embedding_dim=embedding_dim)
+        super().__init__(embedding_dim=embedding_dim,
+                         device=device,
+                         )
         self.flatten = nn.Flatten(start_dim=-len(input_shape), end_dim=-1)
 
     def forward(self, board):
@@ -109,11 +135,22 @@ class FlattenAndLinearEmbedder(BoardEmbedder):
     first flattens a piece, then linearly maps it to embedding_dim
     """
 
-    def __init__(self, input_shape, embedding_dim):
-        super().__init__(embedding_dim)
-        self.flatten = FlattenEmbedder(input_shape=input_shape)
+    def __init__(self,
+                 input_shape,
+                 embedding_dim,
+                 device=None,
+                 ):
+        super().__init__(embedding_dim,
+                         device=device,
+                         )
+        self.flatten = FlattenEmbedder(input_shape=input_shape,
+                                       device=self.device,
+                                       )
         flattened_size = self.flatten.embedding_dim
-        self.linear = nn.Linear(in_features=flattened_size, out_features=embedding_dim)
+        self.linear = nn.Linear(in_features=flattened_size,
+                                out_features=embedding_dim,
+                                device=self.device,
+                                )
 
     def forward(self, board):
         board = self.flatten(board)
@@ -129,18 +166,26 @@ class BoardSetEmbedder(nn.Module):
         maybe does a final linear map to the desired input dim
     """
 
-    def __init__(self, board_embedding_list, final_embedding_dim=None):
+    def __init__(self,
+                 board_embedding_list,
+                 final_embedding_dim=None,
+                 device=None,
+                 ):
         """
         Args:
             board_embedding_list: list of BoardEmbedder objects, same size as number of boards
             final_embedding_dim: final embedding dim, if specified, does a final linear embedding from the concatenated board embeddings
         """
         super().__init__()
+        self.device = device
         self.board_embedders = nn.ModuleList(board_embedding_list)
         self.cat_input = sum(board_embedder.embedding_dim for board_embedder in board_embedding_list)
         if final_embedding_dim:
             self.embedding_dim = final_embedding_dim
-            self.final_embedding = nn.Linear(in_features=self.cat_input, out_features=final_embedding_dim)
+            self.final_embedding = nn.Linear(in_features=self.cat_input,
+                                             out_features=final_embedding_dim,
+                                             device=self.device,
+                                             )
         else:
             self.embedding_dim = self.cat_input
             self.final_embedding = nn.Identity()
@@ -152,7 +197,7 @@ class BoardSetEmbedder(nn.Module):
         Returns:
             (M, D1, ..., DN, E)
         """
-        board_embeddings = [be.forward(board)
+        board_embeddings = [be.forward(board.to(self.device))
                             for be, board in zip(self.board_embedders, boards)]
         board_cat = torch.cat(board_embeddings, dim=-1)
         return self.final_embedding(board_cat)
@@ -171,7 +216,8 @@ class AutoBoardSetEmbedder(BoardSetEmbedder):
                  default_vector_piece_classes=None,
                  default_vector_piece_args=None,
                  board_embedding_list=None,
-                 final_embedding_dim=None
+                 final_embedding_dim=None,
+                 device=None,
                  ):
         """
         Args:
@@ -187,6 +233,7 @@ class AutoBoardSetEmbedder(BoardSetEmbedder):
                 (if None, flattens vectors and uses as is)
             default_vector_piece_args: list of dict of args to use for each vector piece class
         """
+        self.device = device
         req_len = len(underlying_set_shapes)
         if board_embedding_list is None:
             board_embedding_list = [None for _ in range(req_len)]
@@ -252,19 +299,24 @@ class AutoBoardSetEmbedder(BoardSetEmbedder):
                                           int)  # need to specify this if using default discrete embeddings
 
                         DiscretePieceClass = OneHotEmbedder
-                        discrete_piece_kwargs = {'piece_count': underlying_set_size}
+                        discrete_piece_kwargs = {'piece_count': underlying_set_size,
+                                                 'device': self.device,
+                                                 }
                     if discrete_piece_kwargs is None:
-                        discrete_piece_kwargs = dict()
+                        discrete_piece_kwargs = {'device': self.device, }
                     board_embedding_list[i] = DiscretePieceClass(**discrete_piece_kwargs)
                 else:
                     if VectorPieceClass is None:
                         VectorPieceClass = FlattenEmbedder
-                        vector_kwargs = {'input_shape': underlying_set_shape}
+                        vector_kwargs = {'input_shape': underlying_set_shape,
+                                         'device': self.device,
+                                         }
                     if vector_kwargs is None:
-                        vector_kwargs = dict()
+                        vector_kwargs = {'device': self.device, }
                     board_embedding_list[i] = VectorPieceClass(**vector_kwargs)
         super().__init__(board_embedding_list=board_embedding_list,
                          final_embedding_dim=final_embedding_dim,
+                         device=device,
                          )
 
 

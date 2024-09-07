@@ -5,6 +5,10 @@ from torch import nn
 
 
 class Former(nn.Module):
+    def __init__(self, device):
+        super().__init__()
+        self.device = device
+
     def forward(self, X, src):
         """
         Args:

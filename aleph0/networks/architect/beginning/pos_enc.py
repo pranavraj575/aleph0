@@ -3,9 +3,10 @@ from torch import nn
 
 
 class AbstractPositionalEncoding(nn.Module):
-    def __init__(self, embedding_dim):
+    def __init__(self, embedding_dim, device):
         super().__init__()
         self.embedding_dim = embedding_dim
+        self.device = device
 
     def forward(self, X, positions):
         """
@@ -24,12 +25,19 @@ class IdentityPosititonalEncoding(AbstractPositionalEncoding):
     does nothing
     """
 
-    def __init__(self, embedding_dim):
-        super().__init__(embedding_dim=embedding_dim)
+    def __init__(self, embedding_dim, device=None):
+        super().__init__(embedding_dim=embedding_dim,
+                         device=device,
+                         )
 
 
 class ClassicPositionalEncoding(AbstractPositionalEncoding):
-    def __init__(self, embedding_dim, sequence_dim, base_periods_pre_exp=None):
+    def __init__(self,
+                 embedding_dim,
+                 sequence_dim,
+                 base_periods_pre_exp=None,
+                 device=None,
+                 ):
         """
 
         Args:
@@ -41,14 +49,16 @@ class ClassicPositionalEncoding(AbstractPositionalEncoding):
                         1,1/2,1/4,...
                 by default uses -2*log(10000)/embedding_dim
         """
-        super().__init__(embedding_dim=embedding_dim)
+        super().__init__(embedding_dim=embedding_dim,
+                         device=device,
+                         )
         self.N = sequence_dim
         if base_periods_pre_exp is None:
             base_periods_pre_exp = [-2*math.log(10000.)/embedding_dim for _ in range(self.N)]
         self.base_periods_pre_exp = base_periods_pre_exp
 
         # (N, embedding_dim//2) array of periods to use on each dimension
-        periods = torch.stack([torch.exp(torch.arange(embedding_dim//2)*bppe)
+        periods = torch.stack([torch.exp(torch.arange(embedding_dim//2, device=self.device)*bppe)
                                for bppe in self.base_periods_pre_exp],
                               dim=0)
         self.register_buffer('periods', periods)
@@ -72,7 +82,7 @@ class ClassicPositionalEncoding(AbstractPositionalEncoding):
             zero_shape[-1] = 1
             full_encoding = torch.cat([torch.sin(pre_periodic),
                                        torch.cos(pre_periodic),
-                                       torch.zeros(zero_shape),
+                                       torch.zeros(zero_shape, device=self.device),
                                        ],
                                       dim=-1)
         else:
@@ -86,7 +96,12 @@ class ClassicPositionalEncoding(AbstractPositionalEncoding):
 
 
 class PositionalAppender(AbstractPositionalEncoding):
-    def __init__(self, input_embedding_dim, encoding_nums, base_periods_pre_exp=None):
+    def __init__(self,
+                 input_embedding_dim,
+                 encoding_nums,
+                 base_periods_pre_exp=None,
+                 device=None,
+                 ):
         """
 
         Args:
@@ -99,7 +114,9 @@ class PositionalAppender(AbstractPositionalEncoding):
                 by default uses -log(10000)/encoding_num
         """
         self.encoding_nums = encoding_nums
-        super().__init__(embedding_dim = input_embedding_dim + 2*sum(self.encoding_nums))
+        super().__init__(embedding_dim=input_embedding_dim + 2*sum(self.encoding_nums),
+                         device=device,
+                         )
         if base_periods_pre_exp is None:
             base_periods_pre_exp = [-math.log(10000.)/encoding_num for encoding_num in encoding_nums]
         self.base_periods_pre_exp = base_periods_pre_exp
@@ -123,7 +140,7 @@ class PositionalAppender(AbstractPositionalEncoding):
         perm_pos = positions.permute([(i - 1)%len(posshep) for i in range(len(posshep))]).unsqueeze(-1)
         for dimension, (encoding_num, bppe) in enumerate(zip(self.encoding_nums, self.base_periods_pre_exp)):
             # of size (encoding_num,)
-            periods = torch.exp(torch.arange(encoding_num)*bppe)
+            periods = torch.exp(torch.arange(encoding_num,device=self.device)*bppe)
             # (N, batch_size, D1, ..., DN, encoding_num)
             # or (N, D1, ..., DN, encoding_num)
             pre_periodic = perm_pos[dimension]*periods

@@ -34,10 +34,13 @@ class TransFormer(Former):
             dropout: dropout to use for each layer
             device: device to put stuff on
         """
-        super().__init__()
+        super().__init__(device=device)
         # flatten the middle sequence
         self.flat = nn.Flatten(start_dim=1, end_dim=-2)
-        self.cls_enc = nn.Embedding(num_embeddings=1, embedding_dim=embedding_dim)
+        self.cls_enc = nn.Embedding(num_embeddings=1,
+                                    embedding_dim=embedding_dim,
+                                    device=self.device,
+                                    )
         self.trans = nn.Transformer(
             d_model=embedding_dim,
             nhead=nhead,
@@ -46,7 +49,7 @@ class TransFormer(Former):
             dim_feedforward=dim_feedforward,
             dropout=dropout,
             batch_first=True,
-            device=device,
+            device=self.device,
         )
 
     def forward(self, X, src):
@@ -64,7 +67,10 @@ class TransFormer(Former):
         X = self.flat(X)
 
         # (M, 1, E)
-        cls = self.cls_enc(torch.zeros((shape[0], 1), dtype=torch.long))
+        cls = self.cls_enc(torch.zeros((shape[0], 1),
+                                       dtype=torch.long,
+                                       device=self.device,
+                                       ))
 
         # (M, 1 + D1*...*DN, E)
         X = torch.cat((cls, X), dim=1)
@@ -104,17 +110,20 @@ class TransFormerEmbedder(Former):
             dropout: dropout to use for each layer
             device: device to put stuff on
         """
-        super().__init__()
+        super().__init__(device=device)
         # flatten the middle sequence
         self.flat = nn.Flatten(start_dim=1, end_dim=-2)
-        self.cls_enc = nn.Embedding(num_embeddings=1, embedding_dim=embedding_dim)
+        self.cls_enc = nn.Embedding(num_embeddings=1,
+                                    embedding_dim=embedding_dim,
+                                    device=self.device,
+                                    )
         self.trans_enc = nn.TransformerEncoder(
             encoder_layer=nn.TransformerEncoderLayer(
                 d_model=embedding_dim,
                 nhead=nhead,
                 dim_feedforward=dim_feedforward,
                 dropout=dropout,
-                device=device,
+                device=self.device,
                 batch_first=True,
             ),
             num_layers=num_layers,
@@ -134,7 +143,10 @@ class TransFormerEmbedder(Former):
         X = self.flat(X)
 
         # (M, 1, E)
-        cls = self.cls_enc(torch.zeros((shape[0], 1), dtype=torch.long))
+        cls = self.cls_enc(torch.zeros((shape[0], 1),
+                                       dtype=torch.long,
+                                       device=self.device,
+                                       ))
 
         # (M, 1 + D1*...*DN, E)
         X = torch.cat((cls, X), dim=1)

@@ -8,8 +8,8 @@ class ChainFormer(Former):
     chains multiple formers together, uses cls output of the last one
     """
 
-    def __init__(self, former_list):
-        super().__init__()
+    def __init__(self, former_list, device=None):
+        super().__init__(device=device)
         self.formers = nn.ModuleList(former_list)
 
     def forward(self, X, src):

@@ -32,8 +32,8 @@ class AlephZero(Algorithm):
             use_mcts_in_testing: whether to use mcts when calculating final policy/value
         """
         super().__init__()
-
         self.network = network
+        self.device = self.network.device
         self.GameClass = GameClass
         self.optim = torch.optim.Adam(self.network.parameters(), lr=lr)
         self.buffer = replay_buffer
@@ -220,13 +220,13 @@ class AlephZero(Algorithm):
         perm = game.permutation_to_standard_pos
         if perm is not None:
             values = values[perm]
-        return policy.detach().numpy(), values.detach().numpy()
+        return policy.cpu().detach().numpy(), values.cpu().detach().numpy()
 
     def training_step(self, batch_size, shift_to_zero=True):
         sample = self.buffer.sample(batch_size)
         self.optim.zero_grad()
-        policy_loss = torch.zeros(1)
-        value_loss = torch.zeros(1)
+        policy_loss = 0
+        value_loss = 0
         for game_rep, target_policy, target_values in sample:
             game = self.GameClass.from_representation(game_rep)
             game: SelectionGame

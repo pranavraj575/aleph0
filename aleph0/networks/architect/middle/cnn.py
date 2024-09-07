@@ -63,12 +63,20 @@ class ResBlock(nn.Module):
     uses two convolutions and adds the result to the input
     """
 
-    def __init__(self, num_channels: int, kernel, middle_channels=None):
+    def __init__(self,
+                 num_channels: int,
+                 kernel,
+                 middle_channels=None,
+                 device=None,
+                 ):
         """
         if middle_channels is None, use num_channels in the middle
         kernel must be all odd numbers so that we can keep the dimensions the same
         """
         super(ResBlock, self).__init__()
+        self.device = device
+        if device is not None:
+            raise Exception("CONVND does not implement devices")
         for k in kernel:
             if not k%2:
                 raise Exception('kernel must be only odd numbers')
@@ -87,7 +95,7 @@ class ResBlock(nn.Module):
                                         padding=padding,
                                         )
         self.conv1_param = nn.ParameterList(self.conv1.parameters())
-        self.bn1 = nn.BatchNorm1d(middle_channels)
+        self.bn1 = nn.BatchNorm1d(middle_channels, device=self.device)
         self.relu1 = nn.ReLU()
 
         self.conv2 = torchConvNd.ConvNd(middle_channels,
@@ -97,7 +105,7 @@ class ResBlock(nn.Module):
                                         padding=padding,
                                         )
         self.conv2_param = nn.ParameterList(self.conv2.parameters())
-        self.bn2 = nn.BatchNorm1d(num_channels)
+        self.bn2 = nn.BatchNorm1d(num_channels, device=device)
         self.relu2 = nn.ReLU()
 
     def forward(self, X):
@@ -139,17 +147,21 @@ class CisFormer(Former):
                  kernel,
                  middle_dim=None,
                  collapse_hidden_layers=None,
+                 device=None,
                  ):
         """
         pastes a bunch of CNNs together
 
         """
-        super().__init__()
-
+        super().__init__(device=device)
         self.perm1 = TransToCisPerm(num_dims=len(kernel))
 
         self.layers = nn.ModuleList([
-            ResBlock(num_channels=embedding_dim, kernel=kernel, middle_channels=middle_dim) for _ in
+            ResBlock(num_channels=embedding_dim,
+                     kernel=kernel,
+                     middle_channels=middle_dim,
+                     device=device,
+                     ) for _ in
             range(num_residuals)
         ])
         # this permutation is nessary for collapsing, as collapse keeps the last dimension

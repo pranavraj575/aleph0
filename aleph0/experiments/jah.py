@@ -1,6 +1,8 @@
-import math, argparse
+import math, argparse, torch
 from aleph0.experiments.common.arg_stuff import *
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print('using device', device)
 PARSER = argparse.ArgumentParser()
 
 add_experiment_args(parse=PARSER,
@@ -42,7 +44,7 @@ torch.random.manual_seed(1)
 np.random.seed(1)
 random.seed(1)
 
-ident = args.ident + get_trans_ident(args=args)+get_aleph_ident(args=args)
+ident = args.ident + get_trans_ident(args=args) + get_aleph_ident(args=args)
 print('ident:', ident)
 
 alg = AlephZero(network=AutoTransArchitect(sequence_dim=game.sequence_dim,
@@ -59,9 +61,11 @@ alg = AlephZero(network=AutoTransArchitect(sequence_dim=game.sequence_dim,
                                            dropout=args.dropout,
                                            num_board_layers=args.num_layers,
                                            nhead=args.num_heads,
+                                           device=device,
                                            ),
                 replay_buffer=ReplayBufferDiskStorage(storage_dir=os.path.join(DIR, 'data', 'temp', ident),
                                                       capacity=args.buffer_capacity,
+                                                      device=device,
                                                       ),
                 GameClass=Toe,
                 default_num_reads=args.num_reads,

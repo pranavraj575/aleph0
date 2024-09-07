@@ -14,7 +14,8 @@ class InputEmbedding(nn.Module):
     """
 
     def __init__(self,
-                 embedding_dim
+                 embedding_dim,
+                 device,
                  ):
         """
         Args:
@@ -25,6 +26,7 @@ class InputEmbedding(nn.Module):
         """
         super().__init__()
         self.embedding_dim = embedding_dim
+        self.device = device
 
     def forward(self, observation):
         """
@@ -47,6 +49,7 @@ class InputEmbeddingAppendVector(InputEmbedding):
                  board_embed: BoardSetEmbedder,
                  additional_vector_dim,
                  final_embedding_dim=None,
+                 device=None,
                  ):
         """
         Args:
@@ -59,7 +62,9 @@ class InputEmbeddingAppendVector(InputEmbedding):
             embedding_dim = final_embedding_dim
         else:
             embedding_dim = pos_enc.embedding_dim + additional_vector_dim
-        super().__init__(embedding_dim=embedding_dim)
+        super().__init__(embedding_dim=embedding_dim,
+                         device=device,
+                         )
 
         self.pos_enc = pos_enc
         self.board_embed = board_embed
@@ -67,9 +72,11 @@ class InputEmbeddingAppendVector(InputEmbedding):
         if final_embedding_dim is not None:
             self.board_out = nn.Linear(in_features=self.pos_enc.embedding_dim,
                                        out_features=final_embedding_dim,
+                                       device=self.device,
                                        )
             self.vec_out = nn.Linear(in_features=additional_vector_dim,
                                      out_features=final_embedding_dim,
+                                     device=self.device,
                                      )
         else:
             self.board_out = nn.Identity()
@@ -84,12 +91,12 @@ class InputEmbeddingAppendVector(InputEmbedding):
         """
         boards, positions, vector = observation
         board_embedding = self.board_embed.forward(boards=boards)
-        board_embedding = self.pos_enc.forward(X=board_embedding, positions=positions)
+        board_embedding = self.pos_enc.forward(X=board_embedding, positions=positions.to(self.device))
         # board embedding is now (M, D1,...,DN, self.pos_enc.embedding_dim)
 
         if self.additional_vector_dim > 0:
             shape = tuple(board_embedding.shape[:-1]) + (self.additional_vector_dim,)
-            vector = vector.broadcast_to(shape)
+            vector = vector.to(self.device).broadcast_to(shape)
             board_embedding = torch.cat((board_embedding, vector), dim=-1)
         return self.board_out.forward(board_embedding), None
 
@@ -104,6 +111,7 @@ class InputEmbeddingIgnoreVector(InputEmbedding):
                  pos_enc: AbstractPositionalEncoding,
                  board_embed: BoardSetEmbedder,
                  final_embedding_dim=None,
+                 device=None,
                  ):
         """
         Args:
@@ -116,12 +124,15 @@ class InputEmbeddingIgnoreVector(InputEmbedding):
             embedding_dim = pos_enc.embedding_dim
         else:
             embedding_dim = final_embedding_dim
-        super().__init__(embedding_dim=embedding_dim)
+        super().__init__(embedding_dim=embedding_dim,
+                         device=device,
+                         )
         self.pos_enc = pos_enc
         self.board_embed = board_embed
         if final_embedding_dim is not None:
             self.board_out = nn.Linear(in_features=self.pos_enc.embedding_dim,
                                        out_features=final_embedding_dim,
+                                       device=self.device,
                                        )
         else:
             self.board_out = nn.Identity()
@@ -134,7 +145,7 @@ class InputEmbeddingIgnoreVector(InputEmbedding):
         """
         boards, positions, vector = observation
         board_embedding = self.board_embed.forward(boards=boards)
-        board_embedding = self.pos_enc.forward(X=board_embedding, positions=positions)
+        board_embedding = self.pos_enc.forward(X=board_embedding, positions=positions.to(self.device))
         # board embedding is now (M, D1,...,DN, self.pos_enc.embedding_dim)
 
         return self.board_out.forward(board_embedding), None
@@ -152,6 +163,7 @@ class InputEmbeddingMapVector(InputEmbedding):
                  vector_map,
                  vector_final_dim=None,
                  final_embedding_dim=None,
+                 device=None,
                  ):
         """
         Args:
@@ -165,16 +177,20 @@ class InputEmbeddingMapVector(InputEmbedding):
             embedding_dim = pos_enc.embedding_dim
         else:
             embedding_dim = final_embedding_dim
-        super().__init__(embedding_dim=embedding_dim)
+        super().__init__(embedding_dim=embedding_dim,
+                         device=device,
+                         )
         self.pos_enc = pos_enc
         self.board_embed = board_embed
         self.vector_map = vector_map
         if final_embedding_dim is not None:
             self.board_out = nn.Linear(in_features=self.pos_enc.embedding_dim,
                                        out_features=final_embedding_dim,
+                                       device=self.device,
                                        )
             self.vec_out = nn.Linear(in_features=vector_final_dim,
                                      out_features=final_embedding_dim,
+                                     device=self.device,
                                      )
         else:
             self.board_out = nn.Identity()
@@ -188,9 +204,9 @@ class InputEmbeddingMapVector(InputEmbedding):
         """
         boards, positions, vector = observation
         board_embedding = self.board_embed.forward(boards=boards)
-        board_embedding = self.pos_enc.forward(X=board_embedding, positions=positions)
+        board_embedding = self.pos_enc.forward(X=board_embedding, positions=positions.to(self.device))
         # board embedding is now (M, D1,...,DN, self.pos_enc.embedding_dim)
-        vector_embedding = self.vector_map(vector)
+        vector_embedding = self.vector_map(vector.to(self.device))
         return self.board_out.forward(board_embedding), self.vec_out.forward(vector_embedding)
 
 
@@ -215,6 +231,7 @@ def AutoInputEmbedder(
         final_embedding_dim=None,
         encoding_nums=None,
         base_periods_pre_exp=None,
+        device=None,
 ):
     """
     Args:
@@ -235,20 +252,24 @@ def AutoInputEmbedder(
     board_embed = AutoBoardSetEmbedder(underlying_set_shapes=underlying_set_shapes,
                                        underlying_set_sizes=underlying_set_sizes,
                                        final_embedding_dim=embedding_dim,
+                                       device=device,
                                        )
     if encoding_nums is None:
         pos_enc = ClassicPositionalEncoding(embedding_dim=embedding_dim,
                                             sequence_dim=sequence_dim,
+                                            device=device,
                                             )
     else:
         pos_enc = PositionalAppender(input_embedding_dim=embedding_dim,
                                      encoding_nums=encoding_nums,
                                      base_periods_pre_exp=base_periods_pre_exp,
+                                     device=device,
                                      )
     if additional_vector_dim == 0:
         return InputEmbeddingIgnoreVector(pos_enc=pos_enc,
                                           board_embed=board_embed,
                                           final_embedding_dim=final_embedding_dim,
+                                          device=device,
                                           )
     else:
         return InputEmbeddingMapVector(
@@ -257,4 +278,5 @@ def AutoInputEmbedder(
             vector_map=VecToSeqEmbedding(),
             final_embedding_dim=final_embedding_dim,
             vector_final_dim=final_embedding_dim,
+            device=device,
         )

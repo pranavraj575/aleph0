@@ -13,6 +13,7 @@ class PolicyValue(nn.Module):
                  policy_hidden_layers=None,
                  value_hidden_layers=None,
                  special_hidden_layers=None,
+                 device=None,
                  ):
         """
         Args:
@@ -25,22 +26,26 @@ class PolicyValue(nn.Module):
             special_hidden_layers: guess
         """
         super().__init__()
+        self.device=device
         self.embedding_dim = embedding_dim
         self.selection_size = selection_size
         self.selection_policy_net = FFN(input_dim=self.embedding_dim*(1 + self.selection_size),
                                         output_dim=1,
                                         hidden_layers=policy_hidden_layers,
+                                        device=self.device,
                                         )
 
         self.value_net = FFN(input_dim=embedding_dim,
                              output_dim=num_players,
                              hidden_layers=value_hidden_layers,
+                                        device=self.device,
                              )
         self.num_special_moves = num_special_moves
         if self.num_special_moves:
             self.special_net = FFN(input_dim=embedding_dim,
                                    output_dim=self.num_special_moves,
                                    hidden_layers=special_hidden_layers,
+                                        device=self.device,
                                    )
         self.softmax = nn.Softmax(dim=-1)
 
@@ -64,7 +69,10 @@ class PolicyValue(nn.Module):
         selections = []
         # do each element of batch independently for now
         for m in range(M):
-            sel = torch.zeros(len(selection_moves), self.embedding_dim*(1 + self.selection_size))
+            sel = torch.zeros(len(selection_moves),
+                              self.embedding_dim*(1 + self.selection_size),
+                              device=self.device,
+                              )
             # set selections by order
             for k, kth_idxs in enumerate(zip(*selection_moves)):
                 # kth_idxs is a list of n-dim indices of size len(selection_moves).
