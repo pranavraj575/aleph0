@@ -75,7 +75,7 @@ class UltimateToe(FixedSizeSelectionGame):
                     (3, 3, 3, 3),
                     (3, 3, 3, 3)
                 ),
-                (3, 3, 3, 3, 2),
+                (3, 3, 3, 3, 4),
                 0)
 
     @staticmethod
@@ -281,7 +281,14 @@ class LessUltimateToe(UltimateToe):
 
     @staticmethod
     def fixed_obs_shape():
-        B, P, T = super().fixed_obs_shape()
+    
+        return ((
+                    (9, 9),
+                    (9, 9)
+                ),
+                (9, 9, 2),
+                0)
+        B, P, T = UltimateToe.fixed_obs_shape()
         # combine the first and third, second and fourth dimensions
         B = tuple(
             tuple(
@@ -295,14 +302,35 @@ class LessUltimateToe(UltimateToe):
         """
         ignores current player, as it is always assumed to be the X player's move
         """
-        Bs, P, T = super().observation
+        Bs, _, T = super().observation
         # first swap so we have dimensions in order (big I, mini i, big J, mini j, extra)
         # then flatten (big J mini j) and then (big I, mini i) dimensions
         return tuple(
             B.transpose(1, 2).flatten(2, 3).flatten(0, 1)
-            for B in Bs), P, T
+            for B in Bs), self.get_indices(), T
 
+    def get_valid_next_selections(self, move_prefix=()):
+        for i,j,k,l in super().get_valid_next_selections(move_prefix=move_prefix):
+            yield i*3+k,j*3+l
+    
+    def make_move(self, local_move):
+        (i,j),=local_move
+        global_move=(i//3,j//3,i%3,j%3),
+        
+        board = self.board.clone()
+        board[global_move[0]] = self.current_player
+        active_board = global_move[0][2:]
+        super_toe = self.super_toe.clone()
+        super_toe[global_move[0][:2]] = self.test_board(board[global_move[0][:2]])
 
+        if super_toe[active_board] != LessUltimateToe.EMPTY:
+            active_board = None
+
+        return LessUltimateToe(current_player=self.invert_player(self.current_player),
+                           board=board,
+                           active_board=active_board,
+                           super_toe=super_toe,
+                           )
 if __name__ == '__main__':
     toe = LessUltimateToe()
     while not toe.is_terminal():
