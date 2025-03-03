@@ -1,9 +1,10 @@
 from aleph0.networks.ffn import FFN
-from aleph0.networks.architect.middle.collapse import CollapseFFN
+from aleph0.networks.architect.middle.collapse import Collapse, CollapseFFN, CollapseMHA
 
 from aleph0.networks.architect.architect import (Architect,
                                                  AutoArchitect,
                                                  AutoCisArchitect,
+                                                 AutoTransArchitect,
                                                  )
 
 from aleph0.networks.architect.beginning.input_embedding import (InputEmbedding,
@@ -36,12 +37,14 @@ from aleph0.networks.architect.end.policy_value import PolicyValue
 
 __all__ = [
     "FFN",
+    "Collapse",
     "CollapseFFN",
+    "CollapseMHA",
 
     'Architect',
     'AutoArchitect',
-    'AutoTransEmbedArchitect',
     'AutoCisArchitect',
+    'AutoTransArchitect',
 
     'InputEmbedding',
     'InputEmbeddingMapVector',
