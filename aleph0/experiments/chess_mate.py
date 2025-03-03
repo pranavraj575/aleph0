@@ -1,5 +1,6 @@
 import argparse, torch, os, math, sys, time
 import numpy as np
+from aleph0.experiments.common.plotting_anal import plot_training_curves
 
 PARSER = argparse.ArgumentParser()
 PARSER.add_argument('--material', action='store', required=False, default='qr',
@@ -41,8 +42,8 @@ def create_game():
         piece = P.as_player(mapping[p], P.P0)
         a, b = 0, 0
         # dont let the game start out with king in check
-        while board[a, b] != P.EMPTY or (a >= I - 2 and b >= J - 2) or (a==b):
-            a, b = torch.randint(0, I-1, (1,)).item(), torch.randint(0, J-1, (1,)).item()
+        while board[a, b] != P.EMPTY or (a >= I - 2 and b >= J - 2) or (a == b):
+            a, b = torch.randint(0, I - 1, (1,)).item(), torch.randint(0, J - 1, (1,)).item()
 
         board[a, b] = piece
     game = Chess2d(initial_board=Board(board=board))
@@ -91,7 +92,7 @@ plt_dir = os.path.join(save_dir, 'plot')
 
 testing_agents = [[Randy()],
                   [alg],
-                  #[MCTS(num_reads=420)]
+                  # [MCTS(num_reads=420)]
                   ]
 testing_trial_names = [
     'random',
@@ -106,86 +107,17 @@ name_map = {'random': 'Random',
 batch = 512
 mini = 256
 
-
-def smooth(arr, n):
-    out = np.zeros_like(arr)
-    out += arr
-    for i in range(1, 1 + n):
-        out[i:] += arr[:-i]
-        out[:i] += arr[:i]  # duplicate these
-
-        out[:-i] += arr[i:]
-        out[-i:] += arr[-i:]  # duplicate these
-
-    return out/(2*n + 1)
-
-
 if not args.reset and os.path.exists(save_dir):
     print('loading algorithm from', save_dir)
     alg.load(save_dir)
     print('epochs pretrained:', alg.epochs)
     if args.plot:
-        from matplotlib import pyplot as plt
-
-        if not os.path.exists(plt_dir):
-            os.makedirs(plt_dir)
-        print('plotting')
-        just_win_rates = dict()
-        just_tie_rates = dict()
-        just_loss_rates = dict()
-        epoch_infos=alg.epoch_infos
-        x = self_outcomes = [epoch_info['epoch'] for epoch_info in epoch_infos]
-        for trial_name in testing_trial_names:
-            for smoo in (True, False):
-                self_outcomes = [[item['self_outcome'] for item in epoch_info['testing'][trial_name]]
-                                 for epoch_info in epoch_infos if trial_name in epoch_info['testing']]
-                if not self_outcomes:
-                    continue
-                losses, ties, wins = [np.array([t.count(val)/len(t) for t in self_outcomes]) for val in (0., .5, 1.)]
-                just_win_rates[trial_name] = wins
-                just_loss_rates[trial_name] = losses
-                just_tie_rates[trial_name] = ties
-                if smoo:
-                    losses = smooth(losses, n=args.smooth_radius)
-                    ties = smooth(ties, n=args.smooth_radius)
-                    wins = smooth(wins, n=args.smooth_radius)
-                plt.fill_between(x=x, y1=0, y2=losses, color='red', label='losses', alpha=.69)
-                plt.fill_between(x=x, y1=losses, y2=losses + ties, color='purple', label='ties', alpha=.68)
-                plt.fill_between(x=x, y1=losses + ties, y2=1, color='blue', label='wins', alpha=.68)
-
-                plt.title('performance against ' +
-                          str(name_map[trial_name]) +
-                          (' (smoothing radius ' + str(args.smooth_radius) + ')' if smoo else ''))
-                plt.legend()
-                plt.ylim((0, 1))
-                plt.xlabel('epochs')
-                plt.ylabel('win/tie/loss rates')
-                fn = os.path.join(plt_dir,
-                                  ('smooth_' if smoo else '') + 'game_dist_against_' + name_map[trial_name] + '.png')
-                plt.savefig(fn)
-                print('saved', fn)
-
-                plt.close()
-        for pltname, guy in (('win', just_win_rates),
-                             ('tie', just_tie_rates),
-                             ('loss', just_loss_rates),
-                             ):
-            for smoo in (True, False):
-                for trial_name in guy:
-                    thing = guy[trial_name]
-                    if smoo:
-                        thing = smooth(thing, n=args.smooth_radius)
-                    plt.plot(thing, label=name_map[trial_name])
-                plt.xlabel('epochs')
-                plt.legend()
-                plt.title(pltname + ' rates' + (' (smoothing radius ' + str(args.smooth_radius) + ')' if smoo else ''))
-                plt.ylim((0, 1))
-                fn = os.path.join(plt_dir, ('smooth_' if smoo else '') + 'all_' + pltname + '_rates.png')
-                plt.savefig(fn)
-                print('saved', fn)
-                plt.close()
-        print('done plotting')
-
+        plot_training_curves(plt_dir=plt_dir,
+                             epoch_infos=alg.epoch_infos,
+                             testing_trial_names=testing_trial_names,
+                             name_map=name_map,
+                             smooth_radius=args.smooth_radius,
+                             )
 if args.play:
     print(play_game(test_game, [alg, Human()], print_dist=True)[0])
     print(play_game(test_game, [Human(), alg], print_dist=True)[0])
