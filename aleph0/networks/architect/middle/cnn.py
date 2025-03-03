@@ -6,7 +6,7 @@ import torchConvNd
 import torch
 from torch import nn
 
-from aleph0.networks.architect.middle.collapse import Collapse
+from aleph0.networks.architect.middle.collapse import CollapseFFN
 from aleph0.networks.architect.middle.former import Former
 
 
@@ -167,9 +167,9 @@ class CisFormer(Former):
         # this permutation is nessary for collapsing, as collapse keeps the last dimension
         self.perm2 = CisToTransPerm(num_dims=len(kernel))
 
-        self.collapse = Collapse(embedding_dim=embedding_dim,
-                                 hidden_layers=collapse_hidden_layers,
-                                 )
+        self.collapse = CollapseFFN(embedding_dim=embedding_dim,
+                                    hidden_key_layers=collapse_hidden_layers,
+                                    )
 
     def forward(self, X, src=None):
         """

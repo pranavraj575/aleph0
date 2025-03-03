@@ -69,69 +69,51 @@ class TransFormer(Former):
                 device=self.device,
             )
 
-    def forward_by_layer(self, X, src, perm=None, max_batch=None):
+    def forward_by_layer(self, X, src, collapse_fn, perm=None, max_batch=None):
         """
         Args:
             X: board embedding (M, D1, ... DN, E)
             src: src embedding (M, S, E)
                 we will never mask the source, as this is not a language model
+            collapse_fn: collapses a sequence (M,*,E) to (M,E), usually using netowrks from self
             perm: permutation of (0,...,N-1), represents order of dimensions that we apply the transformer to
             max_batch: max batch to send through transformer
         """
-        # TODO do cls somehow
         shape = X.shape
         N = len(shape) - 2
         if perm is None:
             perm = list(range(N))
+        clses = []
         for dim_i in perm:
-            dim_i = dim_i + 1  # i is now between 1 and N (inclusive)
-            # (M, D1, ... DN, E) -> (M, D{i+1},...,DN, D1, ... Di, E)
-            # does this through the permutation (0,i+1,...,N,1,...,i,N+1)
-            X = torch.permute(X,
-                              [0] +
-                              list(range(dim_i + 1, N + 1)) +
-                              list(range(1, dim_i + 1)) +
-                              [N + 1]
-                              )
+            X, cls_i = self.forward_some_dims(X=X, src=src, dims=[dim_i], collapse_fn=collapse_fn, max_batch=max_batch)
+            # x does not change shape, cls_i is (M,E), viewed as (M,1,E)
+            clses.append(cls_i.view(shape[0], 1, shape[-1]))
+        # apply collapse once more to all the cls_i, which concatenated are (M,D,E)
+        cls = collapse_fn(torch.concatenate(clses, dim=1))
+        return X, cls
 
-            temp_shape = X.shape
-            X.flatten(0, N)
-            # now (M*D1*...*DN,Di,E)
-
-            # TODO: break up the first dim if necessary
-            X = self.transforward(X=X, src=src)
-
-            X = X.reshape(temp_shape)
-            # shape (M, D{i+1},...,DN, D1, ... Di, E)
-
-            # inverse of the first permute
-            # (0,i+1,..., N ,  1  ,...,i,N+1) to
-            # (0,1, ... ,N-i,N-i+1,...,N,N+1)
-            # standard form: (0,N-i+1,...,N,1,...,N-i,N+1)
-
-            X = torch.permute(X,
-                              [0] +
-                              list(range(N - dim_i + 1, N + 1)) +
-                              list(range(1, N - dim_i + 1)) +
-                              [N + 1]
-                              )
-        return X
-
-    def forward_some_dims(self, X, src, dims, max_batch=None):
+    def forward_some_dims(self, X, src, dims, collapse_fn, max_batch=None):
         """
+        uses the transformer only on some dimensions
+            this greatly reduces the size of sequences, at the cost of elements only being able to pay attention
+                to elemnts that only vary on dimensions in dims
+                i.e. if dims=[0] on a chess board, elements on different rows would not be able to view each other
         Args:
             X: board embedding (M, D1, ... DN, E)
             src: src embedding (M, S, E)
                 we will never mask the source, as this is not a language model
             dims: list of dims to use transformer on, list of indices in [0,N-1]
+            collapse_fn: collapses a sequence (M,*,E) to (M,E), usually using netowrks from self
             max_batch: max batch to send through transformer
         """
+        # TODO: use this
         dims = list(dims)
         shape = X.shape
         N = len(shape) - 2
+        # TODO: maybe do this in a smarter/faster way
         # sends (0,...,N-1) to (0,...*without dims,N-1, dims)
         perm = [i for i in range(N) if i not in dims] + dims
-
+        # inverse permutation to that
         inv_perm = sorted(range(N), key=lambda i: perm[i])
 
         X = torch.permute(X,
@@ -143,25 +125,56 @@ class TransFormer(Former):
 
         X = X.flatten(0, N - len(dims))
         # shape (*,D{dims},E)
+
         X = X.flatten(1, len(dims))
         # shape (*,D{dims_1}*...*D{dims_k},E)
 
-        # TODO: how do we join all the cls encodings
         cls = self.cls_enc(torch.zeros((X.shape[0], 1),
                                        dtype=torch.long,
                                        device=self.device,
                                        ))
         # shape (*,1,E)
 
-        X = self.transforward(X=X, src=src)
+        cls_added = torch.concatenate((cls, X), dim=1)
+        # shape (*,1+D{dims_1}*...*D{dims_k},E)
+
+        output = self.transforward(X=cls_added, src=src, max_batch=max_batch)
+        # shape (*,1+D{dims_1}*...*D{dims_k},E)
+
+        cls, X = output[:, 0, :], output[:, 1:, :]
+        # shape (*,E) and (*,D{dims_1}*...*D{dims_k},E)
+
+        cls = cls.view((shape[0], -1, shape[-1]))
+        # shape (M,*,E)
+        cls = collapse_fn(cls)
+        # shape(M,E)
 
         X = X.reshape(temp_shape)  # TODO: suspicious, but probably fine to do this
         X = torch.permute(X,
                           [0] + [i + 1 for i in inv_perm] + [N + 1],
                           )
-        return X
+        # returned to original X shape
+        return X, cls
 
-    def transforward(self, X, src=None):
+    def transforward(self, X, src=None, max_batch=None):
+        """
+        runs transformer network on an input
+        output is same shape as X
+        Args:
+            X: (M,T,E) sequence
+            src: src embedding (M, S, E), or None if only_encoder
+            max_batch: maximum batch allowed in the transformer, will split up the calls if X is too large
+        """
+        if (max_batch is not None) and (X.shape[0] > max_batch):
+            output = torch.zeros(X.shape, device=self.device)
+            for i in range(0, X.shape[0], max_batch):
+                top = min(i + max_batch, X.shape[0])
+                if src is None:
+                    src_i = src[i:top]
+                else:
+                    src_i = None
+                output[i:top] = self.transforward(X=X[i:top], src=src_i, max_batch=None)  # no need to check max_batch
+            return output
         if self.only_encoder:
             X = self.trans.forward(X)
         else:

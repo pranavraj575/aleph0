@@ -7,9 +7,9 @@ PARSER = argparse.ArgumentParser()
 add_experiment_args(parse=PARSER,
                     ident='jenga_test',
                     default_epochs=1500,
-                    default_test_games=50,
-                    default_ckpt_freq=10,
-                    default_test_freq=2,
+                    default_test_games=10,
+                    default_ckpt_freq=5,
+                    default_test_freq=5,
                     )
 add_trans_args(parse=PARSER,
                default_dim_feedforward=64,
