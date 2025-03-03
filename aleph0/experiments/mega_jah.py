@@ -8,7 +8,13 @@ add_experiment_args(parse=PARSER,
                     default_test_freq=1,
                     default_ckpt_freq=5,
                     )
-add_trans_args(parse=PARSER)
+add_trans_args(parse=PARSER,
+               default_embed_dim=128,
+               default_num_heads=4,
+               default_num_layers=4,
+               default_dim_feedforward=128,
+               default_dropout=.1,
+               )
 add_aleph_args(parse=PARSER,
                default_num_reads=1069,
                default_buffer_capacity=50000,
@@ -98,7 +104,7 @@ if not args.reset and os.path.exists(save_dir):
         just_win_rates = dict()
         just_tie_rates = dict()
         just_loss_rates = dict()
-        epoch_infos = alg.epoch_infos
+        epoch_infos = [epoch_info for epoch_info in alg.epoch_infos if 'testing' in epoch_info]
         x = self_outcomes = [epoch_info['epoch'] for epoch_info in epoch_infos]
         for trial_name in testing_trial_names:
             for smoo in (True, False):
@@ -138,7 +144,7 @@ if not args.reset and os.path.exists(save_dir):
                     thing = guy[trial_name]
                     if smoo:
                         thing = smooth(thing, n=args.smooth_radius)
-                    plt.plot(thing, label=name_map[trial_name])
+                    plt.plot(x, thing, label=name_map[trial_name])
                 plt.xlabel('epochs')
                 plt.legend()
                 plt.title(pltname + ' rates' + (' (smoothing radius ' + str(args.smooth_radius) + ')' if smoo else ''))

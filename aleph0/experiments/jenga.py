@@ -4,11 +4,11 @@ from aleph0.experiments.common.arg_stuff import *
 PARSER = argparse.ArgumentParser()
 
 add_experiment_args(parse=PARSER,
-                    ident='toe_test',
+                    ident='jenga_test',
                     default_epochs=1500,
                     default_test_games=50,
-                    default_ckpt_freq=25,
-                    default_test_freq=1,
+                    default_ckpt_freq=10,
+                    default_test_freq=2,
                     )
 add_trans_args(parse=PARSER,
                default_dim_feedforward=64,
@@ -24,8 +24,6 @@ add_aleph_args(parse=PARSER,
                default_minibatch_size=256,
                )
 
-PARSER.add_argument('--game-state-search', action='store_true', required=False,
-                    help="check all non-terminal tic tac toe boards to see if the policy obtained is correct")
 args = PARSER.parse_args()
 import torch, numpy as np, random, os, sys, time
 
@@ -34,14 +32,14 @@ device = None
 # for some reason this is faster, probably because we are parallelizing each batch
 # (parallelinzing that would be annoying)
 print('using device', device)
-from aleph0.examples.tictactoe import Toe
-from aleph0.algs import Human, Exhasutive, Randy, AlephZero, play_game
+from aleph0.examples.jenga import Jenga
+from aleph0.algs import Human, Randy, MCTS, AlephZero, play_game
 from aleph0.networks.architect import AutoTransArchitect
 from aleph0.networks.buffers import ReplayBufferDiskStorage
 
 DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.join(os.getcwd(), sys.argv[0]))))
 
-game = Toe()
+game = Jenga()
 
 torch.random.manual_seed(1)
 np.random.seed(1)
@@ -70,7 +68,7 @@ alg = AlephZero(network=AutoTransArchitect(sequence_dim=game.sequence_dim,
                                                       capacity=args.buffer_capacity,
                                                       device=device,
                                                       ),
-                GameClass=Toe,
+                GameClass=Jenga,
                 default_num_reads=args.num_reads,
                 )
 
@@ -79,10 +77,10 @@ plt_dir = os.path.join(save_dir, 'plot')
 
 testing_trial_names = [
     'random',
-    'exhaustive',
+    'mcts',
 ]
 name_map = {'random': 'Random',
-            'exhaustive': 'Optimal',
+            'mcts': 'MCTS',
             }
 
 
@@ -113,11 +111,11 @@ if not args.reset and os.path.exists(save_dir):
         just_tie_rates = dict()
         just_loss_rates = dict()
         epoch_infos = [epoch_info for epoch_info in alg.epoch_infos if 'testing' in epoch_info]
-        x = self_outcomes = [epoch_info['epoch'] for epoch_info in epoch_infos]
+        x = self_outcomes = [epoch_info['epoch'] for epoch_info in epoch_infos if 'testing' in epoch_info]
         for trial_name in testing_trial_names:
             for smoo in (True, False):
                 self_outcomes = [[item['self_outcome'] for item in epoch_info['testing'][trial_name]]
-                                 for epoch_info in epoch_infos]
+                                 for epoch_info in epoch_infos if 'testing' in epoch_info]
                 losses, ties, wins = [np.array([t.count(val)/len(t) for t in self_outcomes]) for val in (0., .5, 1.)]
                 just_win_rates[trial_name] = wins
                 just_loss_rates[trial_name] = losses
@@ -185,72 +183,14 @@ if not args.reset and os.path.exists(save_dir):
                 print('saved', fn)
                 plt.close()
         print('done plotting')
-exhaust = Exhasutive(cache_depth_rng=(0, float('inf')))
+
 testing_agents = [[Randy()],
-                  [exhaust],
+                  [MCTS(num_reads=args.num_reads)],
                   ]
 
 if args.play:
-    print(play_game(Toe(), [Human(), alg], print_dist=True)[0])
-    print(play_game(Toe(), [alg, Human()], print_dist=True)[0])
-if args.game_state_search:
-    import itertools
-
-    shape = Toe().get_obs_board_shape()
-    i = 0
-    skipped = 0
-    fail_mle = 0
-    fail_corr = 0
-    fail = 0
-    for choice in itertools.product((Toe.EMPTY, Toe.P0, Toe.P1),
-                                    repeat=int(torch.prod(torch.tensor(shape)))):
-
-        pee0 = choice.count(Toe.P0)
-        pee1 = choice.count(Toe.P1)
-        if pee0 >= pee1 and pee1 >= pee0 - 1:
-            board = torch.tensor(choice).view(shape)
-            game = Toe(board=board,
-                       current_player=Toe.P0 if pee0 == pee1 else Toe.P1,
-                       )
-            if not game.is_terminal():
-                true_p, true_v = exhaust.get_policy_value(game=game)
-                pred_p, pred_v = alg.get_policy_value(game=game)
-                optimal_p = (true_p > 0)
-                if torch.all(optimal_p):
-                    skipped += 1
-                    continue  # we do not care about these
-
-                mle_p = torch.zeros_like(pred_p)
-                mle_p[torch.argmax(pred_p)] = 1
-
-                # probability of picking an optimal move
-                correlation = torch.sum(pred_p*optimal_p)
-                # greater than 0 if the 'max' policy picked an optimal move
-                max_corr = torch.sum(mle_p*optimal_p)
-                # if we are less than 50% choosing the best move or if the MLE choice is not optimal
-                if (correlation < .5) or (max_corr == 0):
-                    fail += 1
-                    print()
-                    if (correlation < .5):
-                        fail_corr += 1
-                        print('probility of choosing optimal move:', correlation.item())
-                    if max_corr == 0:
-                        fail_mle += 1
-                        print('mle move choice:', torch.argmax(pred_p).item())
-                    print(game)
-                    print('policy')
-                    print('true', true_p.numpy())
-                    print('pred', pred_p.numpy())
-                    print('value')
-                    print('true', true_v.numpy())
-                    print('pred', pred_v.numpy())
-                i += 1
-    print('total games', i)
-    print('skipped games (no bad moves)', skipped)
-    print('total fails', fail)
-    print('total mle fails', fail_mle)
-    print('total corr fails', fail_corr)
-    quit()
+    print(play_game(Jenga(), [Human(), alg], print_dist=True)[0])
+    print(play_game(Jenga(), [alg, Human()], print_dist=True)[0])
 while alg.info['epochs'] < args.epochs:
     these_testing_agents = None
     start = time.time()
