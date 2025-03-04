@@ -4,12 +4,15 @@ if __name__ == '__main__':
     import argparse
 
     PARSER = argparse.ArgumentParser()
+    jengagroup = PARSER.add_argument_group('jenga', 'arguments for jenga')
+    jengagroup.add_argument('--num-players', type=int, default=2,
+                            help='number of players playing')
     game_map = {'toe': (lambda: Toe()),
                 'ultimatetoe': (lambda: UltimateToe()),
                 'chess5d': (lambda: Chess5d()),
                 'chess2d': (lambda: Chess2d()),
-                'jenga': (lambda: Jenga(num_players=2, )),
-                'jengaone': (lambda: JengaOne(num_players=2, ))
+                'jenga': (lambda: Jenga(num_players=args.num_players, )),
+                'jengaone': (lambda: JengaOne(num_players=args.num_players, ))
                 }
     gmk = list(game_map.keys())
     description_map = {'toe': 'tic tac toe',
@@ -32,4 +35,5 @@ if __name__ == '__main__':
     if args.game is None:
         print('need to specify --game {' + ','.join(gmk) + '}')
         quit()
-    play_game(game=game_map[args.game](), alg_list=[Human(), Human()])
+    game=game_map[args.game]()
+    play_game(game=game, alg_list=[Human() for _ in range(game.num_players)])
