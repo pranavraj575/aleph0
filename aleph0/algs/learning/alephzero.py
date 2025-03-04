@@ -194,6 +194,7 @@ class AlephZero(Algorithm):
                                   num_reads,
                                   depth=float('inf'),
                                   policy_noise=None,
+                                  count=1,
                                   ):
         """
         plays through game (or goes until depth), calling self.generate training data at each step
@@ -206,6 +207,15 @@ class AlephZero(Algorithm):
                 this should not be necessary, as MCTS handles the exploration
         Returns:
         """
+        # collect training data (count-1) times first (since we reassign game in the loop)
+        if count > 1:
+            self.playthrough_training_data(
+                game=game,
+                num_reads=num_reads,
+                depth=depth,
+                policy_noise=policy_noise,
+                count=count - 1,
+            )
         while (depth > 0) and (not game.is_terminal()):
             policy, _, (selection_moves, special_moves) = self.generate_training_data(game=game, num_reads=num_reads)
 
@@ -264,6 +274,7 @@ class AlephZero(Algorithm):
                        trial_names=None,
                        testing_depth=float('inf'),
                        all_possible_perms=None,
+                       print_progress=False,
                        ):
         """
         tests current policy against testing agents, returns testing dict of outcomes
@@ -288,7 +299,9 @@ class AlephZero(Algorithm):
             all_possible_perms = [None for _ in range(len(testing_agents))]
         for name, agents, possible_perms in zip(trial_names, testing_agents, all_possible_perms):
             testing_dict[name] = []
-            for _ in range(num_test_games):
+            for test_icl in range(num_test_games):
+                if print_progress:
+                    print('testing game', test_icl, '/', num_test_games, end='\r')
                 alg_list = [self] + list(agents)
                 if possible_perms is not None:
                     perm = possible_perms[torch.randint(0, len(possible_perms), (1,)).item()]
@@ -318,6 +331,7 @@ class AlephZero(Algorithm):
               minibatch_size=None,
               num_reads=None,
               depth=float('inf'),
+              num_sample_games=1,
               policy_noise=None,
               save_epoch_info=True,
               testing_game=None,
@@ -326,6 +340,7 @@ class AlephZero(Algorithm):
               num_test_games=10,
               testing_depth=None,
               testing_possible_perms=None,
+              print_progress=True,
               ):
         """
         runs an epoch, including training data gen, training, and testing
@@ -335,6 +350,7 @@ class AlephZero(Algorithm):
             minibatch_size: batch size to use for each gradient
             num_reads: num_reads to send when doing MCTS
             depth: max depth to put root node at when playing training game
+            num_sample_games: number of games to sample for data
             policy_noise: noise to add to exploration policy (should probably stay none)
             save_epoch_info: whether to save this epoch's info
             testing_agents: list of lists of agents to train aganst
@@ -356,11 +372,17 @@ class AlephZero(Algorithm):
             num_reads = self.default_num_reads
         if minibatch_size is None:
             minibatch_size = batch_size
+        if print_progress:
+            print('beginning sample games')
         self.playthrough_training_data(game=game,
                                        num_reads=num_reads,
                                        depth=depth,
                                        policy_noise=policy_noise,
+                                       count=num_sample_games,
                                        )
+        if print_progress:
+            print('completed sample games')
+            print('beginning grad step')
         overall_loss, policy_loss, value_loss = 0, 0, 0
         for i in range(0, batch_size, minibatch_size):
             # truncate last batch if larger than minibatch
@@ -373,7 +395,11 @@ class AlephZero(Algorithm):
         policy_loss = policy_loss/batch_size
         value_loss = value_loss/batch_size
 
+        if print_progress:
+            print('completed grad step')
         if testing_agents is not None:
+            if print_progress:
+                print('beginning testing')
             if testing_depth is None:
                 testing_depth = depth
             if testing_game is None:
@@ -384,8 +410,12 @@ class AlephZero(Algorithm):
                                                trial_names=testing_trial_names,
                                                testing_depth=testing_depth,
                                                all_possible_perms=testing_possible_perms,
+                                               print_progress=print_progress,
                                                )
             epoch_info['testing'] = testing_dict
+
+            if print_progress:
+                print('completed testing')
         epoch_info['buffer_size'] = len(self.buffer)
         epoch_info['overall_loss'] = overall_loss
         epoch_info['policy_loss'] = policy_loss
