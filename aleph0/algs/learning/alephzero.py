@@ -23,6 +23,9 @@ class AlephZero(Algorithm):
                  use_mcts_in_testing=False,
                  ):
         """
+        AlephZero algorith to learn a GameClass game
+        Network learns values from CURRENT PLAYER persepective,
+            all training data is saved from CURRENT PLAYER perspective
         Args:
             network: Arcitect to use to go from game observation to policy/value
             replay_buffer: buffer to store (game representation, target policy, target value)
@@ -170,6 +173,11 @@ class AlephZero(Algorithm):
             # we do the inverse permutation here
             # true_values[i]=network_output[perm[i]]
             # so network_output[perm[i]]=true_values[i]
+            # for example, if we are looking from player i's perspective,
+            #   we want the network to place player i's value in the 0th position
+            #   Additionally, perm[i] = 0, by definition
+            #   so the target for the network is a tensor with player i's value at position 0
+            #   target_values[0]=target_values[perm[i]]=true_values[i]
             target_values = torch.zeros_like(true_values)
             target_values[perm] = true_values
         else:

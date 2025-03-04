@@ -95,6 +95,8 @@ class DQNAlg(Algorithm):
                  softmax_constant=10.,
                  ):
         """
+        Learns a q function, map from (obs, act) -> value
+            the value at a (s,a) is the game result if terminal, else gamma*max_a'{q(s',a')} for s' the next state
         Args:
             num_actions: number of possible actions
             obs_shapes: fixed shape of observations from game

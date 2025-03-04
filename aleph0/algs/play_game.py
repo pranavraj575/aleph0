@@ -41,9 +41,9 @@ def play_game(game: SelectionGame,
                 pos_moves = None
             valid_moves = selection_moves + special_moves
             dist, values = alg.get_policy_value(game=temp,
-                                             selection_moves=selection_moves,
-                                             special_moves=special_moves,
-                                             )
+                                                selection_moves=selection_moves,
+                                                special_moves=special_moves,
+                                                )
             if print_dist:
                 print('picking from dist:')
                 print(dist.numpy())

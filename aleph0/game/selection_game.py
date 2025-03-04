@@ -177,7 +177,7 @@ class SelectionGame:
         """
         can only be called on terminal states
         returns an outcome for each player
-        Returns: K-tuple of outcomes for each player
+        Returns: K-tuple of outcomes for each player (NOT PERMUTED)
             outcomes are generally in the range [0,1] and sum to 1
             i.e. in a 1v1 game, outcomes would be (1,0) for p0 win, (0,1) for p1, and (.5,.5) for a tie
             in team games this can be changed to give teammates the same reward, and have the sum across teams be 1
