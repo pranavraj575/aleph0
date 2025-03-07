@@ -301,7 +301,7 @@ class AlephZero(Algorithm):
             testing_dict[name] = []
             for test_icl in range(num_test_games):
                 if print_progress:
-                    print('testing game', test_icl, '/', num_test_games, end='\r')
+                    print('testing game', test_icl, '/', num_test_games, end='        \r')
                 alg_list = [self] + list(agents)
                 if possible_perms is not None:
                     perm = possible_perms[torch.randint(0, len(possible_perms), (1,)).item()]

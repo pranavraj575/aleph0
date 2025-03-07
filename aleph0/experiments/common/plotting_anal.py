@@ -1,5 +1,6 @@
 import numpy as np
 import os
+import itertools
 
 
 def smooth(arr, n):
@@ -92,25 +93,28 @@ def plot_training_curves(plt_dir, epoch_infos, testing_trial_names, name_map, sm
             plt.close()
     # plot the losses
     all_x = [epoch_info['epoch'] for epoch_info in epoch_infos]
-    for combine in (True, False):
+    for combine, log in itertools.product((True, False), repeat=2):
         for key, label in (('overall_loss', 'Overall'),
                            ('policy_loss', 'Policy'),
                            ('value_loss', 'Value'),
                            ):
-            plt.plot(all_x, [ei[key] for ei in epoch_infos], label=label)
+            losses = np.array([ei[key] for ei in epoch_infos])
+            if log:
+                losses = np.log(losses)
+            plt.plot(all_x, losses, label=label)
             if not combine:
-                fn = os.path.join(plt_dir, 'losses_' + label + '.png')
+                fn = os.path.join(plt_dir, ('log_' if log else '') + 'losses_' + label + '.png')
                 plt.xlabel('epochs')
-                plt.ylabel('loss')
+                plt.ylabel(('log ' if log else '') + 'loss')
                 plt.title(label)
                 plt.savefig(fn)
                 print('saved', fn)
                 plt.close()
         if combine:
             plt.legend()
-            fn = os.path.join(plt_dir, 'losses.png')
+            fn = os.path.join(plt_dir, ('log_' if log else '') + 'losses.png')
             plt.xlabel('epochs')
-            plt.ylabel('loss')
+            plt.ylabel(('log ' if log else '') + 'loss')
             plt.savefig(fn)
             print('saved', fn)
             plt.close()
