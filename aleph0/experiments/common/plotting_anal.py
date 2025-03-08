@@ -37,60 +37,124 @@ def plot_training_curves(plt_dir, epoch_infos, testing_trial_names, name_map, sm
     if not os.path.exists(plt_dir):
         os.makedirs(plt_dir)
     print('plotting')
-    just_win_rates = dict()
-    just_tie_rates = dict()
-    just_loss_rates = dict()
     tested_epoch_infos = [epoch_info for epoch_info in epoch_infos if 'testing' in epoch_info]
     tested_x = [epoch_info['epoch'] for epoch_info in tested_epoch_infos]
-    for trial_name in testing_trial_names:
-        # plot win/tie/loss rates against each testing agents
-        for smoo in (True, False):
-            self_outcomes = [[item['self_outcome'] for item in epoch_info['testing'][trial_name]]
-                             for epoch_info in tested_epoch_infos]
-            losses, ties, wins = [np.array([t.count(val)/len(t) for t in self_outcomes]) for val in (0., .5, 1.)]
-            just_win_rates[trial_name] = wins
-            just_loss_rates[trial_name] = losses
-            just_tie_rates[trial_name] = ties
-            if smoo:
-                losses = smooth(losses, n=smooth_radius)
-                ties = smooth(ties, n=smooth_radius)
-                wins = smooth(wins, n=smooth_radius)
-            plt.fill_between(x=tested_x, y1=0, y2=losses, color='red', label='losses', alpha=.69)
-            plt.fill_between(x=tested_x, y1=losses, y2=losses + ties, color='purple', label='ties', alpha=.68)
-            plt.fill_between(x=tested_x, y1=losses + ties, y2=1, color='blue', label='wins', alpha=.68)
 
-            plt.title('performance against ' +
-                      str(name_map[trial_name]) +
-                      (' (smoothing radius ' + str(smooth_radius) + ')' if smoo else ''))
-            plt.legend()
-            plt.ylim((0, 1))
-            plt.xlabel('epochs')
-            plt.ylabel('win/tie/loss rates')
-            fn = os.path.join(plt_dir,
-                              ('smooth_' if smoo else '') + 'game_dist_against_' + name_map[trial_name] + '.png')
-            plt.savefig(fn)
-            print('saved', fn)
+    def cnvrt_to_int_key(tup):
+        """
+        gets rid of annoying tensor tuples for permutations like [tensor(2), tensor(0), tensor(1)]
+        """
+        if type(tup[0]) != int:
+            return tuple(int(p) for p in tup)
+        else:
+            return tuple(tup)
 
-            plt.close()
-    for pltname, guy in (('win', just_win_rates),
-                         ('tie', just_tie_rates),
-                         ('loss', just_loss_rates),
-                         ):
-        # plot win/tie/loss rates against all testing agents
-        for smoo in (True, False):
-            for trial_name in guy:
-                thing = guy[trial_name]
+    for smoo, split_by_order in itertools.product((False, True), repeat=2):
+        prefix = ('smooth_' if smoo else '')
+        just_win_rates = dict()
+        just_tie_rates = dict()
+        just_loss_rates = dict()
+        all_all_perms = set()
+        for trial_name in testing_trial_names:
+            # get all used orders of agents, where '0' is self
+            all_perms = set().union(
+                *({cnvrt_to_int_key(test['perm']) for test in epoch_info['testing'][trial_name]}
+                  for epoch_info in tested_epoch_infos)
+            )
+            all_all_perms = all_all_perms.union(all_perms)
+            # plot win/tie/loss rates against each testing agent
+            if split_by_order:
+                check = [(perm,) for perm in all_perms]
+            else:
+                check = [all_perms]
+            for perms in check:
+                # perms is a list of perms to check
+                # is either a singleton list of one permutaiton or the list of all_perms
+                if split_by_order:
+                    ourder = str(perms[0].index(0))
+                else:
+                    ourder = None
+
+                self_outcomes = [
+                    [
+                        item['self_outcome'] for item in epoch_info['testing'][trial_name]
+                        if cnvrt_to_int_key(item['perm']) in perms
+                    ]
+                    for epoch_info in tested_epoch_infos
+                ]
+                losses, ties, wins = [np.array([t.count(val)/len(t) for t in self_outcomes]) for val in (0., .5, 1.)]
+                if split_by_order:
+                    k = trial_name, perms
+                else:
+                    k = trial_name
+                just_win_rates[k] = wins
+                just_loss_rates[k] = losses
+                just_tie_rates[k] = ties
                 if smoo:
-                    thing = smooth(thing, n=smooth_radius)
-                plt.plot(tested_x, thing, label=name_map[trial_name])
-            plt.xlabel('epochs')
-            plt.legend()
-            plt.title(pltname + ' rates' + (' (smoothing radius ' + str(smooth_radius) + ')' if smoo else ''))
-            plt.ylim((0, 1))
-            fn = os.path.join(plt_dir, ('smooth_' if smoo else '') + 'all_' + pltname + '_rates.png')
-            plt.savefig(fn)
-            print('saved', fn)
-            plt.close()
+                    losses = smooth(losses, n=smooth_radius)
+                    ties = smooth(ties, n=smooth_radius)
+                    wins = smooth(wins, n=smooth_radius)
+                plt.fill_between(x=tested_x, y1=0, y2=losses, color='red', label='losses', alpha=.69)
+                plt.fill_between(x=tested_x, y1=losses, y2=losses + ties, color='purple', label='ties', alpha=.68)
+                plt.fill_between(x=tested_x, y1=losses + ties, y2=1, color='blue', label='wins', alpha=.68)
+
+                plt.title('performance against ' +
+                          str(name_map[trial_name]) +
+                          (' (smoothing radius ' + str(smooth_radius) + ')' if smoo else ''))
+                plt.legend()
+                plt.ylim((0, 1))
+                plt.xlabel('epochs')
+                plt.ylabel('win/tie/loss rates')
+                fn = os.path.join(plt_dir,
+                                  prefix +
+                                  ('player_' + ourder + '_' if split_by_order else '') +
+                                  'game_dist_against_' + name_map[trial_name] +
+                                  '.png'
+                                  )
+                plt.savefig(fn)
+                print('saved', fn)
+
+                plt.close()
+
+        for pltname, guy in (('win', just_win_rates),
+                             ('tie', just_tie_rates),
+                             ('loss', just_loss_rates),
+                             ):
+
+            if split_by_order:
+                check = [(perm,) for perm in all_all_perms]
+            else:
+                check = [all_all_perms]
+
+            # plot win/tie/loss rates against all testing agents
+            for perms in check:
+                if split_by_order:
+                    ourder = str(perms[0].index(0))
+                else:
+                    ourder = None
+
+                for trial_name in testing_trial_names:
+                    if split_by_order:
+                        k = trial_name, perms
+                    else:
+                        k = trial_name
+                    thing = guy[k]
+                    if smoo:
+                        thing = smooth(thing, n=smooth_radius)
+                    plt.plot(tested_x, thing, label=name_map[trial_name])
+                plt.xlabel('epochs')
+                plt.legend()
+                plt.title(pltname + ' rates' + (' (smoothing radius ' + str(smooth_radius) + ')' if smoo else ''))
+                plt.ylim((0, 1))
+                fn = os.path.join(plt_dir, prefix +
+                                  ('player_' + ourder + '_' if split_by_order else '') +
+                                  'all_' +
+                                  pltname +
+                                  '_rates.png'
+                                  )
+                plt.savefig(fn)
+                print('saved', fn)
+                plt.close()
     # plot the losses
     all_x = [epoch_info['epoch'] for epoch_info in epoch_infos]
     for combine, log in itertools.product((True, False), repeat=2):

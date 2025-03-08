@@ -306,7 +306,8 @@ class AlephZero(Algorithm):
                 if possible_perms is not None:
                     perm = possible_perms[torch.randint(0, len(possible_perms), (1,)).item()]
                 else:
-                    perm = list(torch.randperm(len(alg_list)))
+                    perm = torch.randperm(len(alg_list)).tolist()
+                perm = tuple(perm)
 
                 self_idx = perm.index(0)
                 alg_list = [alg_list[i] for i in perm]
