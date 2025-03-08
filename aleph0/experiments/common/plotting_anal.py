@@ -22,7 +22,7 @@ def smooth(arr, n):
     return out/(2*n + 1)
 
 
-def plot_training_curves(plt_dir, epoch_infos, testing_trial_names, name_map, smooth_radius=1):
+def plot_training_curves(plt_dir, epoch_infos, testing_trial_names, name_map, smooth_radius=1,check_orders=True):
     """
     plot a bunch of stuff about the trial losses and such
     Args:
@@ -31,6 +31,7 @@ def plot_training_curves(plt_dir, epoch_infos, testing_trial_names, name_map, sm
         testing_trial_names: list of agents that we tested against (i.e. ['random','mcts'])
         name_map: map from testing_trial_names to real name of each agent for use in titles ({'random':'Random','mcts':'MCTS'})
         smooth_radius: radius for smoothing graphs
+        check_orders: split each plot by order the agent went in (i.e. player 1/player 2 are separate graphs)
     """
     from matplotlib import pyplot as plt
 
@@ -50,6 +51,8 @@ def plot_training_curves(plt_dir, epoch_infos, testing_trial_names, name_map, sm
             return tuple(tup)
 
     for smoo, split_by_order in itertools.product((False, True), repeat=2):
+        if not check_orders and split_by_order:
+            continue
         prefix = ('smooth_' if smoo else '')
         just_win_rates = dict()
         just_tie_rates = dict()
